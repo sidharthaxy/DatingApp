@@ -1,0 +1,15 @@
+# Global ignores
+node_modules/
+.env
+.DS_Store
+
+# Logs
+logs/
+*.log
+
+# Build outputs
+dist/
+build/
+
+# Expo / React Native
+.expo/

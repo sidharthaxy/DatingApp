@@ -1,0 +1,141 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Status {
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  NON_BINARY
+}
+
+enum RelationshipGoal {
+  LONG_TERM
+  LONG_TERM_OPEN_TO_SHORT
+  SHORT_TERM_OPEN_TO_LONG
+  FUN_NEW_FRIENDS
+  STILL_FIGURING_OUT
+}
+
+enum InterestedIn {
+  MEN
+  WOMEN
+  EVERYONE
+}
+
+enum SwipeType {
+  LIKE
+  DISLIKE
+}
+
+enum AdminActionType {
+  APPROVE
+  REJECT
+  WARN
+  BAN
+}
+
+model User {
+  id                String    @id @default(uuid())
+  email             String?   @unique
+  phone             String?   @unique
+  first_name        String?
+  dob               DateTime?
+  gender            Gender?
+  bio               String?   @db.Text
+  city              String?
+  latitude          Float?
+  longitude         Float?
+  height_cm         Int?
+  job_title         String?
+  company           String?
+  living_in         String?
+  relationship_goal RelationshipGoal?
+  interested_in     InterestedIn?
+  discover_enabled  Boolean   @default(true)
+  status            Status    @default(UNDER_REVIEW)
+  kyc_video_url     String?
+
+  created_at        DateTime  @default(now())
+  updated_at        DateTime  @updatedAt
+
+  photos            Photo[]
+  user_interests    UserInterest[]
+  swipes_from       Swipe[]   @relation("SwipesFrom")
+  swipes_to         Swipe[]   @relation("SwipesTo")
+  messages_from     Message[] @relation("MessagesFrom")
+  messages_to       Message[] @relation("MessagesTo")
+  admin_actions     AdminAction[]
+}
+
+model Photo {
+  id         String   @id @default(uuid())
+  user_id    String
+  user       User     @relation(fields: [user_id], references: [id])
+  url        String
+  version    Int      @default(1)
+  status     Status   @default(UNDER_REVIEW)
+  created_at DateTime @default(now())
+}
+
+model Interest {
+  id             String         @id @default(uuid())
+  name           String
+  category       String
+  user_interests UserInterest[]
+}
+
+model UserInterest {
+  user_id     String
+  interest_id String
+  user        User     @relation(fields: [user_id], references: [id])
+  interest    Interest @relation(fields: [interest_id], references: [id])
+
+  @@id([user_id, interest_id])
+}
+
+model Swipe {
+  id         String    @id @default(uuid())
+  from_user  String
+  to_user    String
+  type       SwipeType
+  created_at DateTime  @default(now())
+
+  fromUser User @relation("SwipesFrom", fields: [from_user], references: [id])
+  toUser   User @relation("SwipesTo", fields: [to_user], references: [id])
+
+  @@unique([from_user, to_user]) // Prevent duplicate swipes
+}
+
+model Message {
+  id         String   @id @default(uuid())
+  from_user  String
+  to_user    String
+  content    String?  @db.Text
+  media_url  String?
+  created_at DateTime @default(now())
+
+  fromUser User @relation("MessagesFrom", fields: [from_user], references: [id])
+  toUser   User @relation("MessagesTo", fields: [to_user], references: [id])
+}
+
+model AdminAction {
+  id         String          @id @default(uuid())
+  user_id    String
+  action     AdminActionType
+  reason     String?
+  remark     String?         @db.Text
+  created_at DateTime        @default(now())
+
+  user       User @relation(fields: [user_id], references: [id])
+}

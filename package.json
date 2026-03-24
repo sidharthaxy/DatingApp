@@ -1,0 +1,16 @@
+{
+  "name": "dating-app-root",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "install-all": "npm install && npm --prefix admin install && npm --prefix backend install && npm --prefix mobile install",
+    "admin:dev": "npm --prefix admin run dev",
+    "admin:build": "npm --prefix admin run build",
+    "backend:dev": "npm --prefix backend run dev",
+    "backend:build": "npm --prefix backend run build",
+    "mobile:start": "npm --prefix mobile start",
+    "mobile:android": "npm --prefix mobile android",
+    "mobile:ios": "npm --prefix mobile ios",
+    "mobile:web": "npm --prefix mobile web"
+  }
+}

@@ -47,6 +47,7 @@ enum AdminActionType {
 
 model User {
   id                String    @id @default(uuid())
+  firebase_uid      String?   @unique
   email             String?   @unique
   phone             String?   @unique
   first_name        String?
@@ -63,6 +64,7 @@ model User {
   relationship_goal RelationshipGoal?
   interested_in     InterestedIn?
   discover_enabled  Boolean   @default(true)
+  profile_complete  Boolean   @default(false)
   status            Status    @default(UNDER_REVIEW)
   kyc_video_url     String?
 

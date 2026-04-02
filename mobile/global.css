@@ -1,3 +1,13 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer utilities {
+  .signature-gradient {
+    background: linear-gradient(135deg, #414BEA 0%, #5f34e5 100%);
+  }
+  .glass-panel {
+    background-color: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(20px);
+  }
+}

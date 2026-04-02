@@ -20,11 +20,25 @@ interface AuthState {
   logout: () => void;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   token: null,
   isLoading: true,
   setUser: (user) => set({ user }),
   setToken: (token) => set({ token }),
-  logout: () => set({ user: null, token: null }),
+  logout: async () => {
+    const { token } = get();
+    if (token) {
+      try {
+        const url = `${process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/auth/logout`;
+        await fetch(url, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` }
+        });
+      } catch (e) {
+        console.error('Logout failed:', e);
+      }
+    }
+    set({ user: null, token: null });
+  },
 }));

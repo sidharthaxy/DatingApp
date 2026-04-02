@@ -1,7 +1,10 @@
 import http from 'http';
 import { Server } from 'socket.io';
 import app from './app';
+import { connectRedis } from './config/redis';
+import { PrismaClient } from '@prisma/client';
 
+const prisma = new PrismaClient();
 const PORT = process.env.PORT || 3000;
 
 // Create HTTP Server
@@ -38,9 +41,22 @@ io.on('connection', (socket) => {
   });
 
   // Send/Receive Messages
-  socket.on('send_message', (data: { fromUserId: string; toUserId: string; content?: string; mediaUrl?: string }) => {
-    // Standard real-time relay, persisting logic is handled by REST API earlier, but could be done here too.
-    socket.to(data.toUserId).emit('receive_message', data);
+  socket.on('send_message', async (data: { fromUserId: string; toUserId: string; content?: string; mediaUrl?: string }) => {
+    try {
+      // Persist logic
+      const message = await prisma.message.create({
+        data: {
+          from_user: data.fromUserId,
+          to_user: data.toUserId,
+          content: data.content || null,
+          media_url: data.mediaUrl || null
+        }
+      });
+      // Relay with inserted message ID and timestamp
+      socket.to(data.toUserId).emit('receive_message', { ...data, id: message.id, created_at: message.created_at });
+    } catch (error) {
+      console.error('Failed to save message:', error);
+    }
   });
 
   socket.on('disconnect', () => {
@@ -58,6 +74,10 @@ io.on('connection', (socket) => {
 });
 
 // Start Server
-server.listen(PORT, () => {
-  console.log(`🚀 Server initialized on port ${PORT}`);
+connectRedis().then(() => {
+  server.listen(PORT, () => {
+    console.log(`🚀 Server initialized on port ${PORT}`);
+  });
+}).catch(err => {
+  console.error('Failed to connect to Redis', err);
 });

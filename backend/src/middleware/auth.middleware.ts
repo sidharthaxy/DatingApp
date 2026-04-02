@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import { isTokenBlacklisted } from '../config/redis';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'secret';
 
@@ -10,7 +11,7 @@ export interface AuthenticatedRequest extends Request {
   };
 }
 
-export const authenticate = (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+export const authenticate = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -20,6 +21,11 @@ export const authenticate = (req: AuthenticatedRequest, res: Response, next: Nex
   const token = authHeader.split(' ')[1];
 
   try {
+    const isBlacklisted = await isTokenBlacklisted(token);
+    if (isBlacklisted) {
+      return res.status(401).json({ success: false, error: { code: 'TOKEN_BLACKLISTED', message: 'Token has been logged out' } });
+    }
+
     const decoded = jwt.verify(token, JWT_SECRET) as any;
     req.user = {
       id: decoded.id,

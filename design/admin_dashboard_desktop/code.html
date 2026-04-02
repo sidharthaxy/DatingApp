@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Minglex | Admin Dashboard</title>
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Manrope:wght@300;400;500;600;700&amp;family=Space+Mono&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "on-surface-variant": "#5c5b5b",
+              "tertiary-fixed-dim": "#ff7c62",
+              "background": "#f9f6f5",
+              "tertiary-dim": "#9d1901",
+              "on-tertiary-fixed-variant": "#751000",
+              "surface-variant": "#dedcdc",
+              "inverse-on-surface": "#9e9c9c",
+              "primary": "#3a43e4",
+              "primary-fixed": "#9097ff",
+              "on-error": "#ffefef",
+              "secondary-dim": "#5321d9",
+              "primary-dim": "#2b34d8",
+              "error": "#b41340",
+              "tertiary": "#af270c",
+              "error-container": "#f74b6d",
+              "surface": "#f9f6f5",
+              "on-secondary": "#f6f0ff",
+              "on-primary-container": "#000282",
+              "on-secondary-fixed": "#3600a3",
+              "on-secondary-container": "#4a0cd1",
+              "on-surface": "#2f2f2e",
+              "primary-fixed-dim": "#7f88ff",
+              "secondary-fixed": "#d6cbff",
+              "secondary": "#5f34e5",
+              "surface-dim": "#d6d4d3",
+              "tertiary-fixed": "#ff937d",
+              "error-dim": "#a70138",
+              "outline-variant": "#afadac",
+              "inverse-primary": "#7b85ff",
+              "secondary-fixed-dim": "#c8bbff",
+              "on-tertiary-container": "#650c00",
+              "secondary-container": "#d6cbff",
+              "outline": "#787676",
+              "on-primary": "#f3f1ff",
+              "on-tertiary": "#ffefec",
+              "inverse-surface": "#0e0e0e",
+              "surface-tint": "#3a43e4",
+              "on-primary-fixed-variant": "#00029e",
+              "on-tertiary-fixed": "#370400",
+              "on-error-container": "#510017",
+              "on-primary-fixed": "#000000",
+              "surface-container-high": "#e4e2e1",
+              "surface-container": "#eae7e7",
+              "on-background": "#2f2f2e",
+              "tertiary-container": "#ff937d",
+              "surface-container-highest": "#dedcdc",
+              "on-secondary-fixed-variant": "#5423da",
+              "primary-container": "#9097ff",
+              "surface-container-low": "#f3f0ef",
+              "surface-container-lowest": "#ffffff",
+              "surface-bright": "#f9f6f5"
+            },
+            fontFamily: {
+              "headline": ["Space Grotesk"],
+              "body": ["Manrope"],
+              "label": ["Space Mono"]
+            },
+            borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .tonal-layering {
+            backdrop-filter: blur(8px);
+        }
+    </style>
+</head>
+<body class="bg-surface font-body text-on-surface selection:bg-primary-container selection:text-on-primary-container">
+<!-- SideNavBar (Shared Component) -->
+<aside class="fixed left-0 top-0 h-screen w-64 z-40 bg-zinc-50 dark:bg-zinc-900 flex flex-col p-6 gap-2">
+<div class="mb-10 px-4">
+<h1 class="text-xl font-bold text-indigo-600 dark:text-indigo-400 font-['Space_Grotesk'] tracking-tighter">Minglex</h1>
+<p class="font-['Space_Mono'] uppercase tracking-widest text-[10px] text-zinc-500 mt-1">Digital Kineticist</p>
+</div>
+<nav class="flex-1 flex flex-col gap-2">
+<!-- Home -->
+<a class="flex items-center gap-3 text-zinc-500 dark:text-zinc-400 px-4 py-3 hover:bg-zinc-100 dark:hover:bg-zinc-800/50 transition-all group" href="#">
+<span class="material-symbols-outlined group-active:scale-95 duration-150" data-icon="grid_view">grid_view</span>
+<span class="font-['Space_Mono'] uppercase tracking-widest text-xs">Home</span>
+</a>
+<!-- Spotlight (Active context: Dashboard/Verification) -->
+<a class="flex items-center gap-3 bg-white dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400 rounded-lg px-4 py-3 shadow-sm group" href="#">
+<span class="material-symbols-outlined group-active:scale-95 duration-150" data-icon="auto_awesome">auto_awesome</span>
+<span class="font-['Space_Mono'] uppercase tracking-widest text-xs">Spotlight</span>
+</a>
+<!-- Likes -->
+<a class="flex items-center gap-3 text-zinc-500 dark:text-zinc-400 px-4 py-3 hover:bg-zinc-100 dark:hover:bg-zinc-800/50 transition-all group" href="#">
+<span class="material-symbols-outlined group-active:scale-95 duration-150" data-icon="favorite">favorite</span>
+<span class="font-['Space_Mono'] uppercase tracking-widest text-xs">Likes</span>
+</a>
+<!-- Premium -->
+<a class="flex items-center gap-3 text-zinc-500 dark:text-zinc-400 px-4 py-3 hover:bg-zinc-100 dark:hover:bg-zinc-800/50 transition-all group" href="#">
+<span class="material-symbols-outlined group-active:scale-95 duration-150" data-icon="workspace_premium">workspace_premium</span>
+<span class="font-['Space_Mono'] uppercase tracking-widest text-xs">Premium</span>
+</a>
+<!-- Help -->
+<a class="flex items-center gap-3 text-zinc-500 dark:text-zinc-400 px-4 py-3 hover:bg-zinc-100 dark:hover:bg-zinc-800/50 transition-all group" href="#">
+<span class="material-symbols-outlined group-active:scale-95 duration-150" data-icon="help_outline">help_outline</span>
+<span class="font-['Space_Mono'] uppercase tracking-widest text-xs">Help</span>
+</a>
+</nav>
+<div class="mt-auto pt-6 border-t border-zinc-200/50 dark:border-zinc-800/50">
+<button class="w-full bg-indigo-600 text-white font-['Space_Mono'] uppercase tracking-widest text-[10px] py-3 rounded-lg hover:bg-indigo-700 transition-colors mb-4">
+                Upgrade to Plus
+            </button>
+<a class="flex items-center gap-3 text-zinc-500 dark:text-zinc-400 px-4 py-3 hover:bg-zinc-100 dark:hover:bg-zinc-800/50 transition-all group" href="#">
+<span class="material-symbols-outlined group-active:scale-95 duration-150" data-icon="logout">logout</span>
+<span class="font-['Space_Mono'] uppercase tracking-widest text-xs">Sign Out</span>
+</a>
+</div>
+</aside>
+<!-- Main Content Canvas -->
+<main class="ml-64 min-h-screen p-8 lg:p-12">
+<!-- Header Section -->
+<header class="mb-12 flex justify-between items-end">
+<div class="space-y-2">
+<h2 class="text-4xl font-headline font-bold tracking-tighter text-on-surface">Admin Console</h2>
+<div class="flex items-center gap-4">
+<span class="font-label text-xs text-primary uppercase tracking-widest bg-primary-container/20 px-2 py-1">Node: AMS-04</span>
+<span class="font-label text-xs text-on-surface-variant uppercase tracking-widest">Last Sync: 2m ago</span>
+</div>
+</div>
+<div class="flex gap-4 items-center">
+<button class="p-2 bg-surface-container-low text-on-surface hover:bg-surface-container-high transition-colors">
+<span class="material-symbols-outlined" data-icon="refresh">refresh</span>
+</button>
+<button class="bg-primary text-on-primary px-6 py-2 font-label text-xs uppercase tracking-widest hover:bg-secondary transition-all">
+                    System Logs
+                </button>
+</div>
+</header>
+<!-- Stats Grid (Bento Style) -->
+<section class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+<!-- Total Users Card -->
+<div class="bg-surface-container-lowest p-8 flex flex-col justify-between relative overflow-hidden group">
+<div class="relative z-10">
+<p class="font-label text-xs uppercase tracking-widest text-on-surface-variant mb-4">Total Ecosystem Users</p>
+<h3 class="text-5xl font-headline font-bold text-on-surface">1.2M</h3>
+<p class="mt-4 font-body text-sm text-primary flex items-center gap-1">
+<span class="material-symbols-outlined text-sm" data-icon="trending_up">trending_up</span>
+                        +12.4% from last month
+                    </p>
+</div>
+<div class="absolute -right-4 -bottom-4 opacity-5 group-hover:opacity-10 transition-opacity">
+<span class="material-symbols-outlined text-[120px]" data-icon="groups">groups</span>
+</div>
+</div>
+<!-- Pending KYC Card -->
+<div class="bg-primary-container p-8 flex flex-col justify-between relative overflow-hidden group">
+<div class="relative z-10">
+<p class="font-label text-xs uppercase tracking-widest text-on-primary-container mb-4">Pending Verifications</p>
+<h3 class="text-5xl font-headline font-bold text-on-primary-container">4,892</h3>
+<p class="mt-4 font-body text-sm text-on-primary-container/70 flex items-center gap-1">
+<span class="material-symbols-outlined text-sm" data-icon="schedule">schedule</span>
+                        Avg. Wait: 14 mins
+                    </p>
+</div>
+<div class="absolute -right-4 -bottom-4 opacity-10">
+<span class="material-symbols-outlined text-[120px]" data-icon="verified_user">verified_user</span>
+</div>
+</div>
+<!-- Approval Rate Card -->
+<div class="bg-surface-container-lowest p-8 flex flex-col justify-between relative overflow-hidden group">
+<div class="relative z-10">
+<p class="font-label text-xs uppercase tracking-widest text-on-surface-variant mb-4">System Approval Rate</p>
+<h3 class="text-5xl font-headline font-bold text-on-surface">94.2%</h3>
+<div class="mt-4 w-full bg-surface-container h-1.5 overflow-hidden">
+<div class="bg-primary h-full w-[94.2%]"></div>
+</div>
+</div>
+<div class="absolute -right-4 -bottom-4 opacity-5">
+<span class="material-symbols-outlined text-[120px]" data-icon="analytics">analytics</span>
+</div>
+</div>
+</section>
+<!-- Verification Queue Section -->
+<section class="space-y-6">
+<div class="flex justify-between items-center">
+<h4 class="text-xl font-headline font-semibold text-on-surface">High Priority Verification Queue</h4>
+<div class="flex gap-2">
+<button class="bg-surface-container-lowest text-on-surface-variant px-4 py-2 font-label text-[10px] uppercase tracking-widest hover:text-primary border-b-2 border-transparent hover:border-primary transition-all">All Requests</button>
+<button class="bg-surface-container-lowest text-primary px-4 py-2 font-label text-[10px] uppercase tracking-widest border-b-2 border-primary">Urgent</button>
+<button class="bg-surface-container-lowest text-on-surface-variant px-4 py-2 font-label text-[10px] uppercase tracking-widest hover:text-primary border-b-2 border-transparent hover:border-primary transition-all">Flagged</button>
+</div>
+</div>
+<!-- Queue Grid -->
+<div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+<!-- User Review Card 1 -->
+<div class="bg-surface-container-lowest p-6 flex gap-6 items-start group">
+<div class="relative flex-shrink-0">
+<img alt="" class="w-32 h-40 object-cover rounded-sm grayscale group-hover:grayscale-0 transition-all duration-500" data-alt="close-up portrait of a young man with a slight beard in soft natural light, minimalist background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCxUJfcUIiibFGeBqOwCC17BivpJcUSBPRQIKeOT8uGHcE5UY5pHQGYAzjv0yeAaYklwRSMvsX4RN-3tyuw2MXDcS7uRYkyyzs4ge5RstaC4OfCkxUOkAls5gmmAxVc07VLwhxJyO43UTsutDWLDdOGkLqTkvF7wKO2RdyrP36aGugK3yfxRr02pyer2zlP6peROyUcuLo-WdIQgvrzS6rCr6k3cIACv0CT5Zvw6ZWQvQe9z-FjZP2Ze0_y0a3g5CMjPBytnJcAwx4"/>
+<div class="absolute -top-2 -left-2 bg-tertiary text-on-tertiary font-label text-[10px] px-2 py-0.5 uppercase">Liveness 98%</div>
+</div>
+<div class="flex-1 space-y-4">
+<div class="flex justify-between items-start">
+<div>
+<h5 class="text-lg font-headline font-bold text-on-surface">Julian Rossi, 26</h5>
+<p class="font-label text-[10px] text-on-surface-variant uppercase tracking-widest mt-1">ID: #MZ-99021 • London, UK</p>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant/30" data-icon="more_vert">more_vert</span>
+</div>
+<p class="font-body text-sm text-on-surface-variant line-clamp-2 italic">"Software architect looking for someone who appreciates a good espresso and brutalist architecture."</p>
+<div class="flex gap-3 pt-2">
+<button class="flex-1 bg-primary text-on-primary py-3 font-label text-[10px] uppercase tracking-widest hover:bg-secondary transition-all">Approve</button>
+<button class="flex-1 bg-surface-container-high text-on-surface-variant py-3 font-label text-[10px] uppercase tracking-widest hover:bg-error-container hover:text-on-error-container transition-all">Reject</button>
+</div>
+</div>
+</div>
+<!-- User Review Card 2 -->
+<div class="bg-surface-container-lowest p-6 flex gap-6 items-start group">
+<div class="relative flex-shrink-0">
+<img alt="" class="w-32 h-40 object-cover rounded-sm grayscale group-hover:grayscale-0 transition-all duration-500" data-alt="editorial portrait of a woman with braided hair wearing a neutral silk top, warm studio lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDFCWkcfxeapOi_9a_w9XOaigthSpKirML4u6WgyqEpvpqqKuZwDUhkul2pZpK623shxjr-IfnwDKktf1vvOkkFgdjQtdjR7FKtCNcey00bdX9FgL6XxNK1rMjUEqQc-7PRk8XKSGTPaCoAmU-Ux0lmlg_NUnxEu1O7XR-fTjMcsnHOzN4IPOnUpJDrEQzTLTBi4K-d00nyVM2frR-zOkk6AwqIvx_EB7r8nr87kb9G_0q2i4Hfl5Cy2Il0hnbUahX7NiiVVPTA3oQ"/>
+<div class="absolute -top-2 -left-2 bg-primary text-on-primary font-label text-[10px] px-2 py-0.5 uppercase">Premium Queue</div>
+</div>
+<div class="flex-1 space-y-4">
+<div class="flex justify-between items-start">
+<div>
+<h5 class="text-lg font-headline font-bold text-on-surface">Elena Vance, 29</h5>
+<p class="font-label text-[10px] text-on-surface-variant uppercase tracking-widest mt-1">ID: #MZ-88210 • Paris, FR</p>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant/30" data-icon="more_vert">more_vert</span>
+</div>
+<p class="font-body text-sm text-on-surface-variant line-clamp-2 italic">"Curating moments of digital kineticism. Digital artist. Searching for a muse or a partner in crime."</p>
+<div class="flex gap-3 pt-2">
+<button class="flex-1 bg-primary text-on-primary py-3 font-label text-[10px] uppercase tracking-widest hover:bg-secondary transition-all">Approve</button>
+<button class="flex-1 bg-surface-container-high text-on-surface-variant py-3 font-label text-[10px] uppercase tracking-widest hover:bg-error-container hover:text-on-error-container transition-all">Reject</button>
+</div>
+</div>
+</div>
+<!-- User Review Card 3 -->
+<div class="bg-surface-container-lowest p-6 flex gap-6 items-start group">
+<div class="relative flex-shrink-0">
+<img alt="" class="w-32 h-40 object-cover rounded-sm grayscale group-hover:grayscale-0 transition-all duration-500" data-alt="dramatic black and white portrait of a man with strong features, side lighting emphasizing texture" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBU-aeWYvh91RxqXCSPChnrpD2Y_ieLxwaSpBZfsfk44Lps0snyttRl-dhLFIkaOGSHIFlOAxt2FMKTpSluhZh-64dMrD8los0lvBvwq1geNNSGd5Kpo_Wg7JN0bkQVWIY-QlO_3julghuZ08fUhH7miWNaT6Y4mrNc4fiPJL80Q1D82z_s0Rd2nXDU6mfhnTZ-wQ7Fg_7RFZt7v_y9d5Pr908dCLKsayobS5ECaQKgemNORlsQhV-hbiywMUXG0GsVi-r-Xk8RS-4"/>
+<div class="absolute -top-2 -left-2 bg-error text-on-error font-label text-[10px] px-2 py-0.5 uppercase">Liveness 62%</div>
+</div>
+<div class="flex-1 space-y-4">
+<div class="flex justify-between items-start">
+<div>
+<h5 class="text-lg font-headline font-bold text-on-surface">Marcus Thorne, 31</h5>
+<p class="font-label text-[10px] text-on-surface-variant uppercase tracking-widest mt-1">ID: #MZ-10294 • Berlin, DE</p>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant/30" data-icon="more_vert">more_vert</span>
+</div>
+<p class="font-body text-sm text-on-surface-variant line-clamp-2 italic">"Investor, explorer, and part-time philosopher. Seeking depth in a swipe-right world."</p>
+<div class="flex gap-3 pt-2">
+<button class="flex-1 bg-primary text-on-primary py-3 font-label text-[10px] uppercase tracking-widest hover:bg-secondary transition-all">Approve</button>
+<button class="flex-1 bg-surface-container-high text-on-surface-variant py-3 font-label text-[10px] uppercase tracking-widest hover:bg-error-container hover:text-on-error-container transition-all">Reject</button>
+</div>
+</div>
+</div>
+<!-- User Review Card 4 -->
+<div class="bg-surface-container-lowest p-6 flex gap-6 items-start group">
+<div class="relative flex-shrink-0">
+<img alt="" class="w-32 h-40 object-cover rounded-sm grayscale group-hover:grayscale-0 transition-all duration-500" data-alt="soft natural portrait of a young woman laughing in an outdoor setting with dappled sunlight" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCS13WBNpzZX1irJs4vI1rX0_XhEkaF-u-oNOLxMKy_An5IRslSP3XUi2wuTJzBQ9Uid956hLTexw1CTiLKNcAEOEcAMSkUQMQpc-twSemZdAPsxAd2Dr-dVj5WMgXWhvZB37npknNY5rC9n5sUYk9Ngx6IBxzZ-SShWlQbXjNvUzpikNFsYquT3kzOC3pC1L4UmN72Ox1sR3rTNm0c3f05YtSVdIa2EpQYoYG0ul9hIIYYN3tVA1UwahpkjerGkiF1tp_KQ3uHq0Q"/>
+<div class="absolute -top-2 -left-2 bg-tertiary-fixed text-on-tertiary-fixed font-label text-[10px] px-2 py-0.5 uppercase">Re-Submission</div>
+</div>
+<div class="flex-1 space-y-4">
+<div class="flex justify-between items-start">
+<div>
+<h5 class="text-lg font-headline font-bold text-on-surface">Sasha K., 24</h5>
+<p class="font-label text-[10px] text-on-surface-variant uppercase tracking-widest mt-1">ID: #MZ-77123 • New York, US</p>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant/30" data-icon="more_vert">more_vert</span>
+</div>
+<p class="font-body text-sm text-on-surface-variant line-clamp-2 italic">"Life is too short for boring conversations. Let's talk about quantum physics or your favorite pasta."</p>
+<div class="flex gap-3 pt-2">
+<button class="flex-1 bg-primary text-on-primary py-3 font-label text-[10px] uppercase tracking-widest hover:bg-secondary transition-all">Approve</button>
+<button class="flex-1 bg-surface-container-high text-on-surface-variant py-3 font-label text-[10px] uppercase tracking-widest hover:bg-error-container hover:text-on-error-container transition-all">Reject</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Load More / Pagination -->
+<div class="flex justify-center pt-8">
+<button class="group flex items-center gap-4 bg-surface-container-lowest border border-outline-variant/15 px-8 py-4 hover:bg-surface-container-low transition-all">
+<span class="font-label text-xs uppercase tracking-[0.2em] text-on-surface">Load next 20 entries</span>
+<span class="material-symbols-outlined text-primary group-hover:translate-y-1 transition-transform" data-icon="expand_more">expand_more</span>
+</button>
+</div>
+</section>
+<!-- System Alerts / Bottom Drawer -->
+<footer class="mt-24 border-t border-outline-variant/10 pt-8 flex flex-col md:flex-row justify-between gap-8">
+<div class="max-w-md">
+<h6 class="font-headline font-bold text-on-surface mb-2">Automated Oversight Active</h6>
+<p class="font-body text-xs text-on-surface-variant leading-relaxed">
+                    AI Agent <span class="text-primary font-label uppercase">Kinetic-01</span> is currently pre-screening uploads. 
+                    Flagged items are prioritized by risk score and proximity to the 48h SLA deadline.
+                </p>
+</div>
+<div class="flex items-center gap-12">
+<div class="text-right">
+<p class="font-label text-[10px] uppercase tracking-widest text-on-surface-variant">System Latency</p>
+<p class="font-headline font-bold text-lg text-on-surface">42ms</p>
+</div>
+<div class="text-right">
+<p class="font-label text-[10px] uppercase tracking-widest text-on-surface-variant">Uptime</p>
+<p class="font-headline font-bold text-lg text-on-surface">99.98%</p>
+</div>
+<div class="flex items-center gap-2 px-4 py-2 bg-secondary/10 rounded-full">
+<div class="w-2 h-2 rounded-full bg-secondary"></div>
+<span class="font-label text-[10px] uppercase tracking-widest text-secondary">Service Healthy</span>
+</div>
+</div>
+</footer>
+</main>
+<!-- Contextual FAB (Only for major actions) -->
+<button class="fixed bottom-8 right-8 bg-primary text-on-primary w-14 h-14 flex items-center justify-center shadow-[0_32px_32px_rgba(47,47,46,0.06)] hover:bg-secondary transition-all hover:scale-105">
+<span class="material-symbols-outlined" data-icon="support_agent">support_agent</span>
+</button>
+</body></html>

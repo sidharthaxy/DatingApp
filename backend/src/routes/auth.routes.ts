@@ -1,9 +1,10 @@
 import { Router } from 'express';
-import { googleLogin, phoneLogin } from '../controllers/auth.controller';
+import { googleLogin, verifyFirebaseToken, logout } from '../controllers/auth.controller';
 
 const router = Router();
 
 router.post('/google', googleLogin);
-router.post('/phone', phoneLogin);
+router.post('/verify', verifyFirebaseToken);
+router.post('/logout', logout);
 
 export default router;

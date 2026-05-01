@@ -63,10 +63,14 @@ model User {
   living_in         String?
   relationship_goal RelationshipGoal?
   interested_in     InterestedIn?
-  discover_enabled  Boolean   @default(true)
-  profile_complete  Boolean   @default(false)
-  status            Status    @default(UNDER_REVIEW)
+  discover_enabled    Boolean   @default(true)
+  is_profile_complete Boolean   @default(false)
+  last_login_at       DateTime?
+  status              Status    @default(UNDER_REVIEW)
   kyc_video_url     String?
+  fcm_token         String?
+  boost_expires_at  DateTime?
+  profile_views     Int       @default(0)
 
   created_at        DateTime  @default(now())
   updated_at        DateTime  @updatedAt
@@ -78,6 +82,13 @@ model User {
   messages_from     Message[] @relation("MessagesFrom")
   messages_to       Message[] @relation("MessagesTo")
   admin_actions     AdminAction[]
+  matches_1         Match[]   @relation("Matches1")
+  matches_2         Match[]   @relation("Matches2")
+
+  favorites_given   Favorite[] @relation("FavoritesUser")
+  favorites_received Favorite[] @relation("FavoritesTarget")
+  wishlists         Wishlist[]
+  wishlisted_in     WishlistMember[] @relation("WishlistedUsers")
 }
 
 model Photo {
@@ -125,7 +136,11 @@ model Message {
   to_user    String
   content    String?  @db.Text
   media_url  String?
+  is_read    Boolean  @default(false)
+  is_edited  Boolean  @default(false)
+  is_deleted Boolean  @default(false)
   created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 
   fromUser User @relation("MessagesFrom", fields: [from_user], references: [id])
   toUser   User @relation("MessagesTo", fields: [to_user], references: [id])
@@ -140,4 +155,51 @@ model AdminAction {
   created_at DateTime        @default(now())
 
   user       User @relation(fields: [user_id], references: [id])
+}
+
+model Match {
+  id         String   @id @default(uuid())
+  user1_id   String
+  user2_id   String
+  created_at DateTime @default(now())
+
+  user1 User @relation("Matches1", fields: [user1_id], references: [id])
+  user2 User @relation("Matches2", fields: [user2_id], references: [id])
+
+  @@unique([user1_id, user2_id])
+}
+
+model Favorite {
+  id         String   @id @default(uuid())
+  user_id    String
+  target_id  String
+  created_at DateTime @default(now())
+
+  user   User @relation("FavoritesUser", fields: [user_id], references: [id])
+  target User @relation("FavoritesTarget", fields: [target_id], references: [id])
+
+  @@unique([user_id, target_id])
+}
+
+model Wishlist {
+  id         String   @id @default(uuid())
+  user_id    String
+  name       String
+  is_public  Boolean  @default(false)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  user       User             @relation(fields: [user_id], references: [id])
+  members    WishlistMember[]
+}
+
+model WishlistMember {
+  wishlist_id String
+  target_id   String
+  created_at  DateTime @default(now())
+
+  wishlist Wishlist @relation(fields: [wishlist_id], references: [id], onDelete: Cascade)
+  target   User     @relation("WishlistedUsers", fields: [target_id], references: [id])
+
+  @@id([wishlist_id, target_id])
 }

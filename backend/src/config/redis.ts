@@ -24,3 +24,10 @@ export const isTokenBlacklisted = async (token: string): Promise<boolean> => {
   const result = await redisClient.get(`bl_${token}`);
   return result === 'true';
 };
+
+export const invalidateDiscoveryCache = async (userId: string) => {
+  const keys = await redisClient.keys(`discovery:${userId}:*`);
+  if (keys.length > 0) {
+    await redisClient.del(keys);
+  }
+};

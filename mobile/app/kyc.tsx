@@ -87,7 +87,7 @@ export default function KYCScreen() {
     setTimeout(() => {
       setIsUploading(false);
       if (user) {
-        setUser({ ...user, profile_complete: true, status: 'APPROVED' });
+        setUser({ ...user, is_profile_complete: true, status: 'APPROVED' });
       }
       router.replace('/(tabs)/discovery');
     }, 2000);

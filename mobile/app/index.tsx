@@ -86,7 +86,7 @@ export default function SplashScreen() {
     return <Redirect href="/(auth)/login" />;
   }
 
-  if (!user.profile_complete || user.status === 'UNDER_REVIEW') {
+  if (!user.is_profile_complete || user.status === 'UNDER_REVIEW') {
     return <Redirect href="/onboarding" />;
   }
 

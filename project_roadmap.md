@@ -1,38 +1,157 @@
 # MingleX Project Roadmap & Status
 
-This document compares the current project state against the specifications defined in [intent.txt](file:///Users/sidharthasubudhi/Desktop/DatingApp/intent.txt) to outline what has been completed and the roadmap for what remains.
+## Project Overview
+MingleX is a premium dating application with high-fidelity design, KYC verification, and AI-driven matchmaking. This roadmap outlines the 21-day development plan for the Beta release.
 
-## 1. System Architecture & Tech Stack (Strict)
-- ✅ **Mobile Apps**: Built with React Native (Expo) and Gluestack UI / NativeWind v4.
-- ✅ **Backend**: Node.js + Express setup is in place `/backend/`.
-- ⏳ **Database & Services**: PostgreSQL (NeonDB), Redis, Cloudflare R2 structure planned but deep integration status varies per feature.
+---
 
-## 2. Completed Features (Frontend & UI)
-- ✅ **Digital Kineticist Design System**: Successfully implemented high-fidelity, highly-responsive Bento Grids and glassmorphism.
-- ✅ **Discovery/Swipe System**: Tinder-like swiping gesture animations (`react-native-reanimated`) and algorithm stats panel fully built (currently loaded with dummy data).
-- ✅ **Responsive Layout**: Desktop layout built specifically for web/large screens avoiding native tab bars.
-- ✅ **KYC Verification UI**: `/kyc.tsx` built with video recording/uploading states.
-- ✅ **Admin Panel UI**: Basic tabular interfaces configured (built in previous sessions).
-- ✅ **Chat UI & WebSockets**: Messaging interface (`/chat/[id].tsx`) and Socket.io configured.
-- ✅ **Branding / Loading State**: Smooth animated JWT authentication splash screen and global app icons configured using the official `minglexlogo.png`.
+## 📅 WEEK 1 — FOUNDATION & CORE LOGIC
 
-## 3. Pending Roadmap (To-Do & Integrations)
+### 🗓️ DAY 1 — Backend Core + Auth (Production Ready)
+- [x] Setup full backend (Node.js, Express, Prisma, PostgreSQL)
+- [x] Implement `/auth/google` (Login works with refresh token logic)
+- [x] JWT + Refresh token
+- [x] Auth middleware (JWT verification with Redis blacklist)
+- [x] Store `firebase_uid` in DB
+- [x] Add `last_login_at` to User model
+- [x] Add `is_profile_complete` (BOOLEAN)
 
-### Phase 1: Authentication & Onboarding
-- [ ] **Wire Firebase/Auth0**: Replace the dummy login (`handleGoogleLogin`, `handlePhoneLogin`) with actual Firebase OTP and Google Auth tokens.
-- [ ] **Onboarding Flow completion**: Ensure all profile data (DOB, Location, Attributes) securely saves to DB (`PUT /users/me`).
-- [ ] **KYC Video API**: Connect `/kyc.tsx` to `POST /media/upload-kyc` securely over R2 signed URLs.
+### 🗓️ DAY 2 — User Onboarding (CRITICAL FLOW)
+- [x] Build full onboarding APIs:
+    - `PUT /users/me`
+    - `POST /users/location`
+    - `POST /users/interests`
+- [x] Logic: Calculate age from DOB
+- [x] Logic: Mark profile complete only if: Name, DOB, At least 1 photo, Interests selected
 
-### Phase 2: Discovery Engine
-- [ ] **Fetch Real Users**: Connect `/discovery.tsx` to `GET /discovery?page=1&limit=20` and populate `DUMMY_USERS` with live data.
-- [ ] **Send Swipe Actions**: Trigger `POST /swipe` when the user swipes left/right instead of just visual animations.
-- [ ] **Real-time Stats Engine**: Pull Kinetic Algorithm data off Live User Data.
+### 🗓️ DAY 3 — Media + KYC (Must for Trust)
+- [x] Photo Upload API: `/media/upload-photo` (Max 9 photos, versioned paths)
+- [x] KYC API: `/media/upload-kyc` (Status: UNDER_REVIEW)
+- [x] Image/Video size/type validation
+- [x] Discovery Gating: Prevent discovery if no photo or KYC not uploaded
 
-### Phase 3: Messaging & WebSockets
-- [ ] **Real-time Chat**: Connect `mobile/app/chat/[id].tsx` to Socket.io directly replacing any mocked static messages.
-- [ ] **Media in Chat**: Handle Image uploads inside the chat to Cloudflare R2 buckets.
+### 🗓️ DAY 4 — Admin Panel APIs (Moderation System)
+- [x] Admin APIs:
+    - `GET /admin/users?status=UNDER_REVIEW`
+    - `GET /admin/users/:id`
+    - `POST /admin/users/:id/approve`
+    - `POST /admin/users/:id/reject`
+- [x] Rejection reasons enum & admin remarks
+- [x] Logic: APPROVED → visible in discovery, REJECTED → blocked
 
-### Phase 4: Admin Moderation & Deployment
-- [ ] **Admin Actions**: Map `POST /admin/users/:id/approve` and `/reject` APIs directly to the backend UI.
-- [ ] **Push Notifications**: Setup `@react-native-firebase/messaging` for matches and messages.
-- [ ] **Deployment**: Dockerize services and deploy APIs to Render/EC2.
+### 🗓️ DAY 5 — Discovery + Swipe (Core Dating Logic)
+- [x] Discovery API: `GET /discovery` (Filter by status=APPROVED, not blocked, not swiped, distance, gender)
+- [x] Swipe API: `POST /swipe` (Prevent duplicate/self swipe)
+- [x] Match Logic: Detect mutual likes and create match
+
+### 🗓️ DAY 6 — Chat System (Basic but Working)
+- [x] APIs:
+    - `POST /chat/send`
+    - `GET /chat/messages/:userId`
+    - `GET /chat/conversations`
+- [x] Rules: Only matched users can chat, blocked users cannot chat
+- [x] Simple polling/persistence (Text only for beta)
+
+### 🗓️ DAY 7 — Polish + Stability + Testing
+- [x] Pagination for all list endpoints
+- [x] Error handling & Edge cases
+- [x] Redis caching for discovery
+- [x] Rate limiting
+- [x] Swagger documentation
+
+---
+
+## 📅 WEEK 2 — REAL-TIME & ADVANCED FEATURES
+
+### 🗓️ DAY 8 — Real-Time Chat with Socket.IO
+- [x] Socket.IO server with auth middleware
+- [x] Online users in Redis
+- [x] Private rooms (1:1)
+- [x] Typing indicators, Read receipts, Online status
+- [x] Edit/Delete message (5min window)
+
+### 🗓️ DAY 9 — Push Notifications (FCM)
+- [x] FCM Setup for iOS/Android
+- [x] Token management in DB
+- [x] Triggers: Match, Message, KYC update, Like/Favorite
+
+### 🗓️ DAY 10 — Advanced Discovery & Filters
+- [x] Filters: Age (18-100), Distance (1km-Worldwide), Interests, Relationship goals, Height, Recently active
+- [x] Sorting: Distance, Activity, Age, Relevance
+
+### 🗓️ DAY 11 — Profile Boost & Ranking System
+- [x] Boost Feature (Razorpay integration prep)
+- [x] Ranking Algorithm: Completeness, Boosted (+50%), New (+30%), Active (+20%)
+- [x] Analytics: Profile views, Like/Dislike ratio
+
+### 🗓️ DAY 12 — Favorites & Wishlist
+- [x] Favorites System (Max 100, Online notifications)
+- [x] Wishlist Feature (Custom lists, sharing, privacy)
+
+### 🗓️ DAY 13 — User Reports & Moderation Queue
+- [ ] Report System (reasons, evidence, rate limiting)
+- [ ] Moderation Queue (Highest reports first, Auto-hide at 10 reports)
+- [ ] Appeal System
+
+### 🗓️ DAY 14 — Week 2 Polish & Testing
+- [ ] DB Query optimization
+- [ ] Image compression (Sharp)
+- [ ] Security hardening (CSRF, XSS, Rate limiting)
+
+---
+
+## 📅 WEEK 3 — PRODUCTION READY & SCALING
+
+### 🗓️ DAY 15 — Subscription & Payments (Razorpay)
+- [ ] Razorpay Integration (Weekly, Monthly, Quarterly, Yearly)
+- [ ] Free vs Premium vs Elite features
+- [ ] Webhook handling
+
+### 🗓️ DAY 16 — AI Matchmaking & Recommendations
+- [ ] Compatibility Score (0-100%)
+- [ ] Daily Recommendations (9 AM)
+- [ ] Smart Swipe Queue prioritization
+
+### 🗓️ DAY 17 — Video Calling & Voice Notes
+- [ ] WebRTC 1-on-1 video calls
+- [ ] Voice Notes (2 min limit, Waveform, Playback speed)
+
+### 🗓️ DAY 18 — Safety Features & Trust Badges
+- [ ] Panic button & Emergency contacts
+- [ ] Trust Badges (KYC, Verified, Active dater, etc.)
+- [ ] Safety Center resources
+
+### 🗓️ DAY 19 — Social Features & Engagement
+- [ ] Stories (24h expiry, reactions, views)
+- [ ] Icebreakers & Prompts
+- [ ] Activity Feed
+
+### 🗓️ DAY 20 — Analytics Dashboard & Admin Panel
+- [ ] Admin Stats (User growth, Swipe/Match stats, Revenue)
+- [ ] Content Moderation (AI NSFW detection, Bulk approval)
+
+### 🗓️ DAY 21 — Final Polish, Deployment & Documentation
+- [ ] Deployment to Render/Neon/R2
+- [ ] Sentry & Monitoring setup
+- [ ] Complete API Docs & Guides
+
+---
+
+## 📊 CURRENT STATUS SUMMARY
+
+### Backend Status
+- **Core**: Node.js/Express setup complete. Prisma ORM configured.
+- **Auth**: Google login works with proper JWT refresh logic. JWT verification middleware ready. Redis blacklist for logout implemented. `last_login_at` and `is_profile_complete` updated in DB.
+- **Database**: Initial schema created with User, Photo, Interest, Swipe, Message, and AdminAction tables.
+- **User APIs**: Full onboarding APIs (`/me`, `/location`, `/interests`) completed with profile completion logic and age validation.
+- **Media APIs**: Photo & KYC upload workflows completed, including signed S3 URLs, size/type validation, DB tracking, and max photo limits.
+- **Discovery**: Discovery feed successfully gated for users who lack a complete profile or missing KYC.
+
+### Frontend Status (Mobile)
+- **UI**: Basic shells for Login, Onboarding, Discovery (Swiping), KYC, and Chat are present.
+- **State Management**: Zustand store implemented for Auth.
+
+### Next Immediate Steps
+1.  Implement Socket.IO server with auth middleware.
+2.  Store online users in Redis.
+3.  Set up Private rooms (1:1).

@@ -4,6 +4,13 @@ import jwt from 'jsonwebtoken';
 import { blacklistToken } from '../config/redis';
 const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET || 'secret';
+const REFRESH_JWT_SECRET = process.env.REFRESH_JWT_SECRET || 'refresh_secret';
+
+const generateTokens = (user: any) => {
+  const accessToken = jwt.sign({ id: user.id, status: user.status }, JWT_SECRET, { expiresIn: '15m' });
+  const refreshToken = jwt.sign({ id: user.id }, REFRESH_JWT_SECRET, { expiresIn: '7d' });
+  return { accessToken, refreshToken };
+};
 
 import admin from '../config/firebase';
 
@@ -31,26 +38,32 @@ export const googleLogin = async (req: Request, res: Response) => {
           firebase_uid: uid,
           email,
           status: 'UNDER_REVIEW',
+          last_login_at: new Date(),
         }
+      });
+    } else {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: { last_login_at: new Date() },
       });
     }
 
-    const accessToken = jwt.sign({ id: user.id, status: user.status }, JWT_SECRET, { expiresIn: '7d' });
+    const tokens = generateTokens(user);
     
     return res.status(200).json({
       success: true,
       data: {
-        accessToken,
-        refreshToken: 'mock-refresh-token',
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
         user: {
           id: user.id,
           status: user.status,
-          profile_complete: user.profile_complete,
+          is_profile_complete: user.is_profile_complete,
         }
       }
     });
   } catch (error: any) {
-    return res.status(500).json({ success: false, error: { code: 'AUTH_FAILED', message: error.message } });
+    return res.status(401).json({ success: false, error: { code: 'AUTH_FAILED', message: error.message || 'Invalid token' } });
   }
 };
 
@@ -77,7 +90,13 @@ export const verifyFirebaseToken = async (req: Request, res: Response) => {
           phone: phone || null,
           email: email || null,
           status: 'UNDER_REVIEW',
+          last_login_at: new Date(),
         }
+      });
+    } else {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: { last_login_at: new Date() },
       });
     }
 
@@ -85,17 +104,17 @@ export const verifyFirebaseToken = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: { code: 'USER_CREATION_FAILED', message: 'Failed to create user' } });
     }
 
-    const accessToken = jwt.sign({ id: user.id, status: user.status }, JWT_SECRET, { expiresIn: '7d' });
+    const tokens = generateTokens(user);
     
     return res.status(200).json({
       success: true,
       data: {
-        accessToken,
-        refreshToken: 'mock-refresh-token',
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
         user: {
           id: user.id,
           status: user.status,
-          profile_complete: user.profile_complete,
+          is_profile_complete: user.is_profile_complete,
         }
       }
     });
@@ -130,5 +149,38 @@ export const logout = async (req: Request, res: Response) => {
     return res.status(200).json({ success: true, message: 'Logged out successfully' });
   } catch (error: any) {
     return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: error.message } });
+  }
+};
+
+export const refreshToken = async (req: Request, res: Response) => {
+  try {
+    const { refreshToken: token } = req.body;
+    if (!token) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_INPUT', message: 'refreshToken required' } });
+    }
+
+    const decoded = jwt.verify(token, REFRESH_JWT_SECRET) as any;
+    const user = await prisma.user.findUnique({ where: { id: decoded.id } });
+
+    if (!user) {
+      return res.status(401).json({ success: false, error: { code: 'AUTH_FAILED', message: 'User not found' } });
+    }
+
+    if (user.status === 'REJECTED') {
+      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'User is blocked' } });
+    }
+
+    const tokens = generateTokens(user);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
+      }
+    });
+
+  } catch (error: any) {
+    return res.status(401).json({ success: false, error: { code: 'AUTH_FAILED', message: 'Invalid or expired refresh token' } });
   }
 };

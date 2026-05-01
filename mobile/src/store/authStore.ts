@@ -8,7 +8,7 @@ export interface User {
   phone?: string;
   first_name?: string;
   status: UserStatus;
-  profile_complete: boolean;
+  is_profile_complete: boolean;
 }
 
 interface AuthState {

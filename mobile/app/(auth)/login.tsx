@@ -204,12 +204,12 @@ export default function LoginScreen() {
     setUser({
       id: data.data.user.id,
       status: data.data.user.status,
-      profile_complete: data.data.user.profile_complete ?? false,
+      is_profile_complete: data.data.user.is_profile_complete ?? false,
     });
 
     setEmulatorModalVisible(false);
 
-    if (data.data.user.profile_complete && data.data.user.status === 'APPROVED') {
+    if (data.data.user.is_profile_complete && data.data.user.status === 'APPROVED') {
       router.replace('/(tabs)/discovery');
     } else {
       router.replace('/onboarding');

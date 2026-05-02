@@ -1,5 +1,5 @@
-import React from 'react';
-import { ScrollView, TouchableOpacity, View } from 'react-native';
+import React, { useEffect } from 'react';
+import { ScrollView, TouchableOpacity, View, ActivityIndicator } from 'react-native';
 import { Box } from '@/components/ui/box';
 import { Text } from '@/components/ui/text';
 import { VStack } from '@/components/ui/vstack';
@@ -7,85 +7,175 @@ import { HStack } from '@/components/ui/hstack';
 import { Heading } from '@/components/ui/heading';
 import { Image } from '@/components/ui/image';
 import { Search } from 'lucide-react-native';
+import { useRouter } from 'expo-router';
+import { useChatStore } from '@/src/store/chatStore';
+import { useAuthStore } from '@/src/store/authStore';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-const NEW_MATCHES = [
-  { id: 'm1', name: 'Elena', image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuATG4NFvVudzlklxSnu4hEuN49G2lrM7L8wdg7Bl9-amQAaTlR-ql9qNUA93Xk4gQ3gUPCArMXQGUR6QGS2oy_gIkf606pFbjS1d2Zn4V2SYGPCfKhqfJX8qV9qCLhanReTP1p_Rwe461O2Z80N0P23TzbNff56fVH53TAlA6TKSyWfbslOdtpidKFYy6NwiuShXZz8hP8MCleh04A_nLxZCFzA9shOp-S7LN9r_foNA-bnq554laCAEZGmRJjD0wCSkqm_7rqUUuA' },
-  { id: 'm2', name: 'Marcus', image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuB5lLx8sb-dC3meTo76_5we1U6IpVzXzXc6J8UcE9PlklvaaSxDvdeoIHCpHyvc2uC0b_lYRuaPZm42aHMgqnY43O6-3VCQuP6TOQqjLatB4V7L8cLNVltkbKspQeq8H2ddRDoqKPcnlECXuejh2PGG7-nQQ3bRn_ivbSWZENxEniOvT_sJi4aXVvK_iq2PyxA3V0KBnSckxamyo4S1Ic3LAwHE7bppyvPrm9je_hoo22HQFD5LsK0tjTKRnES8KQ_z_wh1dQTgJd4' },
-  { id: 'm3', name: 'Sara', image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDPD7u67S2m7B7PZ9hWjgfy1f2Pkxz6v480AGVGCdtGLBA16ZGWTY1ERkCTsIr7B7PzB2EDHpduRaw-EbkOoeZT5ewdbgJ0zI7OEa_Uux0pX12yJ5wib2m0twO5pNPyCRlQVV1RMA7kcNf87sN3_nasoge4mxoawJl0oOMkY0XzTOntvG-4OUnHVOqvWzi0rVsOGBLKhz2FrcRvY4ZQzUV6pZNZ6xG4bpueULL170sv704xlDpNhhkKhsZHnXw4uEmZ4xqyII' }
-];
+const PLACEHOLDER_IMAGE = 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=200';
+const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000';
 
-const RECENT_CHATS = [
-  { id: '1', name: 'Sophie Walters', lastMessage: 'That restaurant sounds amazing! I\'ve been wanting...', time: '2m ago', image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuATG4NFvVudzlklxSnu4hEuN49G2lrM7L8wdg7Bl9-amQAaTlR-ql9qNUA93Xk4gQ3gUPCArMXQGUR6QGS2oy_gIkf606pFbjS1d2Zn4V2SYGPCfKhqfJX8qV9qCLhanReTP1p_Rwe461O2Z80N0P23TzbNff56fVH53TAlA6TKSyWfbslOdtpidKFYy6NwiuShXZz8hP8MCleh04A_nLxZCFzA9shOp-S7LN9r_foNA-bnq554laCAEZGmRJjD0wCSkqm_7rqUUuA', isOnline: true, unread: 2 },
-  { id: '2', name: 'Alex Rivera', lastMessage: 'See you there at 8 then? ☕️', time: '1h ago', image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuB5lLx8sb-dC3meTo76_5we1U6IpVzXzXc6J8UcE9PlklvaaSxDvdeoIHCpHyvc2uC0b_lYRuaPZm42aHMgqnY43O6-3VCQuP6TOQqjLatB4V7L8cLNVltkbKspQeq8H2ddRDoqKPcnlECXuejh2PGG7-nQQ3bRn_ivbSWZENxEniOvT_sJi4aXVvK_iq2PyxA3V0KBnSckxamyo4S1Ic3LAwHE7bppyvPrm9je_hoo22HQFD5LsK0tjTKRnES8KQ_z_wh1dQTgJd4', isOnline: false, unread: 0 },
-  { id: '3', name: 'Jordan Kim', lastMessage: 'Haha, no way! I grew up in that s...', time: 'Yesterday', image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDPD7u67S2m7B7PZ9hWjgfy1f2Pkxz6v480AGVGCdtGLBA16ZGWTY1ERkCTsIr7B7PzB2EDHpduRaw-EbkOoeZT5ewdbgJ0zI7OEa_Uux0pX12yJ5wib2m0twO5pNPyCRlQVV1RMA7kcNf87sN3_nasoge4mxoawJl0oOMkY0XzTOntvG-4OUnHVOqvWzi0rVsOGBLKhz2FrcRvY4ZQzUV6pZNZ6xG4bpueULL170sv704xlDpNhhkKhsZHnXw4uEmZ4xqyII', isOnline: true, unread: 0 }
-];
+function getPartnerImage(partner: any): string {
+  const raw = partner.photos?.[0]?.url;
+  if (!raw) return PLACEHOLDER_IMAGE;
+  return raw.startsWith('http') ? raw : `${API_URL}/${raw}`;
+}
+
+function timeAgo(dateStr: string | null | undefined): string {
+  if (!dateStr) return '';
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
 
 export default function ChatScreen() {
+  const router = useRouter();
+  const { conversations, fetchConversations, activeUsers, isConnected, connectSocket } = useChatStore();
+  const user = useAuthStore((s) => s.user);
+
+  useEffect(() => {
+    // Ensure socket is connected (with auth token) when user enters chat tab
+    connectSocket();
+    fetchConversations();
+  }, []);
+
+  // Separate: conversations with messages (Recent Chats) vs no messages yet (New Matches)
+  const newMatches = conversations.filter((c) => !c.lastMessage);
+  const recentChats = conversations.filter((c) => !!c.lastMessage);
+
+  const navigateToChat = (conv: typeof conversations[0]) => {
+    router.push({
+      pathname: '/chat/[id]',
+      params: {
+        id: conv.partner.id,
+        name: conv.partner.first_name || 'User',
+        image: getPartnerImage(conv.partner),
+        isActive: activeUsers.includes(conv.partner.id) ? 'true' : 'false',
+      },
+    });
+  };
+
   return (
-    <Box className="flex-1 bg-surface">
-      <ScrollView showsVerticalScrollIndicator={false} className="flex-1" contentContainerStyle={{ paddingBottom: 100 }}>
-        
-        {/* Header */}
-        <HStack className="justify-between items-center px-6 pt-12 pb-6">
-          <Heading className="font-headline text-3xl font-bold tracking-tighter text-on-surface">Messages</Heading>
-          <TouchableOpacity className="p-2">
-            <Search size={24} color="#2f2f2e" />
-          </TouchableOpacity>
-        </HStack>
+    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: '#f9f6f5' }}>
+      <Box className="flex-1 bg-surface">
+        <ScrollView showsVerticalScrollIndicator={false} className="flex-1" contentContainerStyle={{ paddingBottom: 100 }}>
 
-        {/* New Matches Section */}
-        <VStack space="md" className="mb-8">
-          <Text className="px-6 font-label text-[10px] uppercase tracking-[0.2em] text-on-surface-variant font-bold">New Matches</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingLeft: 24, paddingRight: 12 }}>
-            <HStack space="lg">
-              {NEW_MATCHES.map((match) => (
-                <VStack key={match.id} className="items-center" space="xs">
-                  <Box className="w-16 h-16 rounded-full p-0.5 border-2 border-primary shadow-lg shadow-primary/20 relative">
-                    <Image source={{ uri: match.image }} className="w-full h-full rounded-full" alt={match.name} />
-                    <View className="absolute bottom-0 right-0 w-4 h-4 signature-gradient rounded-full border-2 border-surface" />
-                  </Box>
-                  <Text className="font-label text-[10px] text-on-surface-variant uppercase tracking-widest mt-1">{match.name}</Text>
-                </VStack>
-              ))}
+          {/* Header */}
+          <HStack className="justify-between items-center px-6 pt-6 pb-6">
+            <Heading className="font-headline text-3xl font-bold tracking-tighter text-on-surface">Messages</Heading>
+            <HStack space="md" className="items-center">
+              {isConnected && (
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#4CAF50' }} />
+              )}
+              <TouchableOpacity className="p-2">
+                <Search size={24} color="#2f2f2e" />
+              </TouchableOpacity>
             </HStack>
-          </ScrollView>
-        </VStack>
+          </HStack>
 
-        {/* Recent Chats Section */}
-        <VStack space="xs">
-          <Text className="px-6 font-label text-[10px] uppercase tracking-[0.2em] text-on-surface-variant font-bold mb-4">Messages</Text>
-          {RECENT_CHATS.map((chat) => (
-            <TouchableOpacity key={chat.id}>
-              <HStack className="px-6 py-4 items-center space-x-4 border-b border-surface-container-low/50">
-                <Box className="relative w-14 h-14">
-                  <Image source={{ uri: chat.image }} className="w-full h-full rounded-full" alt={chat.name} />
-                  {chat.isOnline && (
-                    <Box className="absolute top-0 right-0 w-3.5 h-3.5 signature-gradient border-2 border-surface rounded-full" />
-                  )}
-                </Box>
-                
-                <VStack className="flex-1 justify-center">
-                  <HStack className="justify-between items-baseline mb-1">
-                    <Text className="font-headline text-base font-bold text-on-surface">{chat.name}</Text>
-                    <Text className="font-body text-[10px] text-on-surface-variant">{chat.time}</Text>
-                  </HStack>
-                  <HStack className="justify-between items-center">
-                    <Text className="font-body text-sm text-on-surface-variant leading-tight flex-1 mr-4" numberOfLines={1}>
-                      {chat.lastMessage}
-                    </Text>
-                    {chat.unread > 0 && (
-                      <Box className="w-5 h-5 signature-gradient rounded-full items-center justify-center">
-                        <Text className="text-[10px] font-bold text-white">{chat.unread}</Text>
-                      </Box>
-                    )}
-                  </HStack>
+          {conversations.length === 0 ? (
+            <Box className="flex-1 items-center justify-center py-24">
+              <ActivityIndicator color="#414BEA" />
+              <Text className="text-on-surface-variant font-body mt-4">Loading matches…</Text>
+            </Box>
+          ) : (
+            <>
+              {/* New Matches — no messages yet */}
+              {newMatches.length > 0 && (
+                <VStack space="md" className="mb-8">
+                  <Text className="px-6 font-label text-[10px] uppercase tracking-[0.2em] text-on-surface-variant font-bold">
+                    New Matches
+                  </Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingLeft: 24, paddingRight: 12 }}>
+                    <HStack space="lg">
+                      {newMatches.map((match) => {
+                        const isOnline = activeUsers.includes(match.partner.id);
+                        return (
+                          <TouchableOpacity key={match.match_id} onPress={() => navigateToChat(match)}>
+                            <VStack className="items-center" space="xs">
+                              <Box className="w-16 h-16 rounded-full p-0.5 border-2 border-primary shadow-lg shadow-primary/20 relative">
+                                <Image
+                                  source={{ uri: getPartnerImage(match.partner) }}
+                                  className="w-full h-full rounded-full"
+                                  alt={match.partner.first_name || 'User'}
+                                />
+                                {isOnline && (
+                                  <View className="absolute bottom-0 right-0 w-4 h-4 signature-gradient rounded-full border-2 border-surface" />
+                                )}
+                              </Box>
+                              <Text className="font-label text-[10px] text-on-surface-variant uppercase tracking-widest mt-1">
+                                {match.partner.first_name || 'User'}
+                              </Text>
+                            </VStack>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </HStack>
+                  </ScrollView>
                 </VStack>
-              </HStack>
-            </TouchableOpacity>
-          ))}
-        </VStack>
+              )}
 
-      </ScrollView>
-    </Box>
+              {/* Recent Chats — conversations with messages */}
+              {recentChats.length > 0 && (
+                <VStack space="xs">
+                  <Text className="px-6 font-label text-[10px] uppercase tracking-[0.2em] text-on-surface-variant font-bold mb-4">
+                    Messages
+                  </Text>
+                  {recentChats.map((chat) => {
+                    const isOnline = activeUsers.includes(chat.partner.id);
+                    const isMine = chat.lastMessage?.from_user === user?.id;
+                    return (
+                      <TouchableOpacity key={chat.match_id} onPress={() => navigateToChat(chat)}>
+                        <HStack className="px-6 py-4 items-center space-x-4 border-b border-surface-container-low/50">
+                          <Box className="relative w-14 h-14">
+                            <Image
+                              source={{ uri: getPartnerImage(chat.partner) }}
+                              className="w-full h-full rounded-full"
+                              alt={chat.partner.first_name || 'User'}
+                            />
+                            {isOnline && (
+                              <Box className="absolute top-0 right-0 w-3.5 h-3.5 signature-gradient border-2 border-surface rounded-full" />
+                            )}
+                          </Box>
+
+                          <VStack className="flex-1 justify-center">
+                            <HStack className="justify-between items-baseline mb-1">
+                              <Text className="font-headline text-base font-bold text-on-surface">
+                                {chat.partner.first_name || 'User'}
+                              </Text>
+                              <Text className="font-body text-[10px] text-on-surface-variant">
+                                {timeAgo(chat.lastMessage?.created_at)}
+                              </Text>
+                            </HStack>
+                            <Text
+                              className="font-body text-sm text-on-surface-variant leading-tight flex-1 mr-4"
+                              numberOfLines={1}
+                            >
+                              {isMine ? 'You: ' : ''}{chat.lastMessage?.content || ''}
+                            </Text>
+                          </VStack>
+                        </HStack>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </VStack>
+              )}
+
+              {/* No chats at all */}
+              {conversations.length > 0 && recentChats.length === 0 && newMatches.length === 0 && (
+                <Box className="items-center py-16">
+                  <Text className="text-on-surface-variant font-body">No matches yet. Keep swiping!</Text>
+                </Box>
+              )}
+            </>
+          )}
+        </ScrollView>
+      </Box>
+    </SafeAreaView>
   );
 }

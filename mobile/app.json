@@ -31,7 +31,9 @@
       "expo-router",
       "@react-native-firebase/app",
       "@react-native-firebase/messaging",
-      "expo-font"
+      "expo-font",
+      "expo-web-browser",
+      "expo-notifications"
     ],
     "experiments": {
       "typedRoutes": true

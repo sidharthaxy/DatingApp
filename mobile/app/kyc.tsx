@@ -11,6 +11,8 @@ import { useRouter } from 'expo-router';
 import { useAuthStore } from '@/src/store/authStore';
 import { Spinner } from '@/components/ui/spinner';
 import { User, Check, ScanFace, ChevronRight } from 'lucide-react-native';
+import * as FileSystem from 'expo-file-system/legacy';
+import { apiPost } from '@/src/lib/api';
 
 const { width } = Dimensions.get('window');
 
@@ -84,13 +86,65 @@ export default function KYCScreen() {
     if (!videoUri) return;
     setIsUploading(true);
     
-    setTimeout(() => {
-      setIsUploading(false);
-      if (user) {
-        setUser({ ...user, is_profile_complete: true, status: 'APPROVED' });
+    try {
+      // getInfoAsync returns a union — narrow via .exists === true to get .size
+      const fileInfo = await FileSystem.getInfoAsync(videoUri);
+      if (!fileInfo.exists) {
+        throw new Error('Video file does not exist');
       }
+
+      const filename = videoUri.split('/').pop() || 'kyc_video.mov';
+      const contentType = filename.endsWith('.mp4') ? 'video/mp4' : 'video/quicktime';
+      const fileSize = fileInfo.size; // safe — .size exists on the exists:true branch
+
+      // 1. Get signed upload URL
+      const res = await apiPost('/api/v1/media/upload-url', {
+        filename,
+        contentType,
+        type: 'kyc',
+        fileSize
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error?.message || 'Failed to get upload URL');
+
+      const { uploadUrl, key } = data.data;
+
+      // 2. Upload to S3 using expo-file-system's binary upload task (correct for video blobs)
+      const uploadTask = FileSystem.createUploadTask(
+        uploadUrl,
+        videoUri,
+        {
+          httpMethod: 'PUT',
+          headers: { 'Content-Type': contentType },
+          uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT
+        }
+      );
+      
+      const result = await uploadTask.uploadAsync();
+      // MinIO returns 200, AWS S3 presigned PUT returns 200, some configs return 204
+      if (!result || (result.status !== 200 && result.status !== 204)) {
+        throw new Error(`Upload failed with status ${result?.status}`);
+      }
+
+      // 3. Confirm with backend — route is /upload-kyc
+      const confirmRes = await apiPost('/api/v1/media/upload-kyc', {
+        url: key
+      });
+      const confirmData = await confirmRes.json();
+      if (!confirmData.success) throw new Error(confirmData.error?.message || 'Failed to confirm KYC');
+
+      // 4. Update local user state
+      if (user) {
+        setUser({ ...user, status: 'UNDER_REVIEW' });
+      }
+      
       router.replace('/(tabs)/discovery');
-    }, 2000);
+    } catch (e: any) {
+      alert('Upload failed: ' + e.message);
+      console.error('KYC Upload error:', e);
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   return (

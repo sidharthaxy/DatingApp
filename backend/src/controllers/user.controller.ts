@@ -205,3 +205,12 @@ export const boostUser = async (req: AuthenticatedRequest, res: Response) => {
     return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: error.message } });
   }
 };
+
+export const getInterests = async (req: Request, res: Response) => {
+  try {
+    const interests = await prisma.interest.findMany();
+    return res.status(200).json({ success: true, data: interests });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: error.message } });
+  }
+};

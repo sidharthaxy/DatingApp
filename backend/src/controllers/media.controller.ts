@@ -4,6 +4,8 @@ import { AuthenticatedRequest } from '../middleware/auth.middleware';
 import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { checkAndMarkProfileComplete } from './user.controller';
+import multer from 'multer';
+import sharp from 'sharp';
 
 const prisma = new PrismaClient();
 
@@ -142,7 +144,67 @@ export const confirmKycUpload = async (req: AuthenticatedRequest, res: Response)
       }
     });
 
-    return res.status(200).json({ success: true, message: 'KYC submitted for review' });
+    return res.status(200).json({ success: true, data: { message: 'KYC submitted for review' } });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: error.message } });
+  }
+};
+
+const storage = multer.memoryStorage();
+export const uploadPhotoMiddleware = multer({
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  fileFilter: (req, file, cb) => {
+    if (['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type'));
+    }
+  }
+}).single('photo');
+
+export const uploadPhoto = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ success: false, error: { code: 'ACCESS_DENIED' } });
+
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_INPUT', message: 'No photo provided or invalid type' } });
+    }
+
+    // Process with sharp
+    const optimizedBuffer = await sharp(req.file.buffer)
+      .resize({ width: 1080, height: 1080, fit: 'inside', withoutEnlargement: true })
+      .webp({ quality: 80 })
+      .toBuffer();
+
+    const version = Date.now();
+    const key = `users/${userId}/photos/v${version}_optimized.webp`;
+
+    // Upload to S3/MinIO
+    const command = new PutObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: key,
+      Body: optimizedBuffer,
+      ContentType: 'image/webp'
+    });
+
+    await s3.send(command);
+
+    const publicUrl = `http://127.0.0.1:9000/${BUCKET_NAME}/${key}`;
+
+    // Save to DB
+    const photo = await prisma.photo.create({
+      data: {
+        user_id: userId,
+        url: publicUrl,
+        status: 'UNDER_REVIEW',
+      }
+    });
+
+    await checkAndMarkProfileComplete(userId);
+
+    return res.status(201).json({ success: true, data: { photo } });
   } catch (error: any) {
     return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: error.message } });
   }

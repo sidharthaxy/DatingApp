@@ -59,6 +59,8 @@ export const googleLogin = async (req: Request, res: Response) => {
           id: user.id,
           status: user.status,
           is_profile_complete: user.is_profile_complete,
+          first_name: user.first_name,
+          subscription_tier: user.subscription_tier,
         }
       }
     });
@@ -115,6 +117,8 @@ export const verifyFirebaseToken = async (req: Request, res: Response) => {
           id: user.id,
           status: user.status,
           is_profile_complete: user.is_profile_complete,
+          first_name: user.first_name,
+          subscription_tier: user.subscription_tier,
         }
       }
     });

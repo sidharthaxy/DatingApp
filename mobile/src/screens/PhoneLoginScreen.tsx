@@ -14,6 +14,7 @@ import auth, { FirebaseAuthTypes } from '@react-native-firebase/auth';
 
 export default function PhoneLoginScreen() {
   const { setUser, setToken } = useAuthStore();
+  const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000';
   const [phoneNumber, setPhoneNumber] = useState('');
   const [code, setCode] = useState('');
   const [confirm, setConfirm] = useState<FirebaseAuthTypes.ConfirmationResult | null>(null);
@@ -54,7 +55,9 @@ export default function PhoneLoginScreen() {
         if (userCredential?.user) {
           const idToken = await userCredential.user.getIdToken();
           
-          const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000'; 
+          const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000';
+  // FCM util — lazy import to avoid crash if expo-notifications not installed
+  const { registerForPushNotifications } = require('@/src/lib/notifications'); 
           
           try {
              const res = await fetch(`${apiUrl}/api/v1/auth/verify`, {
@@ -71,7 +74,11 @@ export default function PhoneLoginScreen() {
                  id: data.data.user.id,
                  status: data.data.user.status,
                  is_profile_complete: data.data.user.is_profile_complete ?? false,
+                 first_name: data.data.user.first_name ?? null,
+                 subscription_tier: data.data.user.subscription_tier ?? 'FREE',
                });
+               // Register FCM push token (non-blocking)
+               registerForPushNotifications().catch(() => {});
                if (data.data.user.is_profile_complete && data.data.user.status === 'APPROVED') {
                  router.replace('/(tabs)/discovery');
                } else {

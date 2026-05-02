@@ -22,6 +22,7 @@ import { Image } from '@/components/ui/image';
 import { useAuthStore } from '@/src/store/authStore';
 import { SmartphoneIcon } from 'lucide-react-native';
 import { router } from 'expo-router';
+import { registerForPushNotifications } from '@/src/lib/notifications';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 const USE_EMULATOR = process.env.EXPO_PUBLIC_USE_EMULATOR === 'true';
@@ -146,7 +147,7 @@ function EmulatorGoogleModal({
 
 // ─── Main Login Screen ────────────────────────────────────────────────────────
 export default function LoginScreen() {
-  const { setUser, setToken } = useAuthStore();
+  const { setUser, setToken, persistRefreshToken } = useAuthStore();
   const [googleLoading, setGoogleLoading] = useState(false);
   const [emulatorModalVisible, setEmulatorModalVisible] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -201,13 +202,19 @@ export default function LoginScreen() {
     if (!data.success) throw new Error(data.error?.message || 'Login failed');
 
     setToken(data.data.accessToken);
+    await persistRefreshToken(data.data.refreshToken);
     setUser({
       id: data.data.user.id,
       status: data.data.user.status,
       is_profile_complete: data.data.user.is_profile_complete ?? false,
+      first_name: data.data.user.first_name ?? null,
+      subscription_tier: data.data.user.subscription_tier ?? 'FREE',
     });
 
     setEmulatorModalVisible(false);
+
+    // Register FCM token with backend (non-blocking)
+    registerForPushNotifications().catch(() => {});
 
     if (data.data.user.is_profile_complete && data.data.user.status === 'APPROVED') {
       router.replace('/(tabs)/discovery');

@@ -6,11 +6,13 @@ import { VStack } from '@/components/ui/vstack';
 import { HStack } from '@/components/ui/hstack';
 import { Heading } from '@/components/ui/heading';
 import { Image } from '@/components/ui/image';
-import { ArrowLeft, Video, Phone, Plus, Mic, Send } from 'lucide-react-native';
+import { ArrowLeft, Video, Phone, Plus, Mic, Send, Flag } from 'lucide-react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useChatStore } from '@/src/store/chatStore';
 import { useAuthStore } from '@/src/store/authStore';
+import { apiGet } from '@/src/lib/api';
+import ReportSheet from '@/src/components/ReportSheet';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000';
 export default function ChatThreadScreen() {
@@ -20,20 +22,24 @@ export default function ChatThreadScreen() {
   const [inputText, setInputText] = useState('');
   const [history, setHistory] = useState<any[]>([]);
   const scrollViewRef = useRef<ScrollView>(null);
-  const { messages, sendMessage } = useChatStore();
-  const token = useAuthStore((s) => s.token);
+  const { messages, sendMessage, setTyping, connectSocket, typingUsers, markRead } = useChatStore();
   const currentUser = useAuthStore((s) => s.user);
 
   const isUserActive = isActive === 'true';
+  const partnerIsTyping = typingUsers[id as string] ?? false;
+  const [reportVisible, setReportVisible] = useState(false);
+
+  useEffect(() => {
+    // Ensure socket is connected with auth token
+    connectSocket();
+  }, []);
 
   useEffect(() => {
     const fetchHistory = async () => {
-      if (!token || !id) return;
+      if (!id) return;
       try {
-        const response = await fetch(`${API_URL}/api/v1/chat/messages/${id}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        const json = await response.json();
+        const res = await apiGet(`/api/v1/chat/messages/${id}`);
+        const json = await res.json();
         if (json.success && json.data.messages) {
            const formatted = json.data.messages.reverse().map((m: any) => ({
              id: m.id,
@@ -48,11 +54,12 @@ export default function ChatThreadScreen() {
       }
     };
     fetchHistory();
-  }, [id, token]);
+  }, [id]);
 
   const handleSend = () => {
     if (inputText.trim()) {
       sendMessage(id as string, inputText.trim());
+      setTyping(id as string, false); // stop typing indicator
       setInputText('');
       setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
     }
@@ -92,6 +99,9 @@ export default function ChatThreadScreen() {
             <TouchableOpacity className="p-2">
               <Phone size={20} color="#afadac" />
             </TouchableOpacity>
+            <TouchableOpacity className="p-2" onPress={() => setReportVisible(true)}>
+              <Flag size={20} color="#afadac" />
+            </TouchableOpacity>
           </HStack>
         </HStack>
 
@@ -127,7 +137,18 @@ export default function ChatThreadScreen() {
               </Box>
             ))}
 
-            {/* Socket Live Messages */}
+            {/* Typing Indicator */}
+            {partnerIsTyping && (
+              <Box className="flex-row justify-start mt-2">
+                <Box className="px-4 py-3 bg-surface-container-high rounded-2xl rounded-bl-none">
+                  <HStack space="xs" className="items-center">
+                    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#afadac' }} />
+                    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#afadac' }} />
+                    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#afadac' }} />
+                  </HStack>
+                </Box>
+              </Box>
+            )}
             {messages.filter(m => m.toUserId === id || m.fromUserId === id).map((msg) => {
                const isSender = msg.fromUserId === currentUser?.id;
                return (
@@ -164,7 +185,11 @@ export default function ChatThreadScreen() {
                 placeholderTextColor="#afadac"
                 multiline
                 value={inputText}
-                onChangeText={setInputText}
+                onChangeText={(text) => {
+                  setInputText(text);
+                  setTyping(id as string, text.length > 0);
+                }}
+                onBlur={() => setTyping(id as string, false)}
               />
               <TouchableOpacity>
                 <Mic size={20} color="#afadac" />
@@ -182,6 +207,14 @@ export default function ChatThreadScreen() {
           </HStack>
         </Box>
       </KeyboardAvoidingView>
+
+      {/* Report Sheet */}
+      <ReportSheet
+        visible={reportVisible}
+        targetId={id as string}
+        targetName={name as string}
+        onClose={() => setReportVisible(false)}
+      />
     </SafeAreaView>
   );
 }

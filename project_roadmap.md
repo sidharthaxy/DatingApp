@@ -89,23 +89,24 @@ MingleX is a premium dating application with high-fidelity design, KYC verificat
 - [x] Wishlist Feature (Custom lists, sharing, privacy)
 
 ### 🗓️ DAY 13 — User Reports & Moderation Queue
-- [ ] Report System (reasons, evidence, rate limiting)
-- [ ] Moderation Queue (Highest reports first, Auto-hide at 10 reports)
-- [ ] Appeal System
+- [x] Report System (reasons, evidence, rate limiting)
+- [x] Moderation Queue (Highest reports first, Auto-hide at 10 reports)
+- [x] Appeal System
 
 ### 🗓️ DAY 14 — Week 2 Polish & Testing
-- [ ] DB Query optimization
-- [ ] Image compression (Sharp)
-- [ ] Security hardening (CSRF, XSS, Rate limiting)
+- [x] DB Query optimization
+- [x] Image compression (Sharp)
+- [x] Security hardening (CSRF, XSS, Rate limiting)
 
 ---
 
 ## 📅 WEEK 3 — PRODUCTION READY & SCALING
 
 ### 🗓️ DAY 15 — Subscription & Payments (Razorpay)
-- [ ] Razorpay Integration (Weekly, Monthly, Quarterly, Yearly)
-- [ ] Free vs Premium vs Elite features
-- [ ] Webhook handling
+- [x] Razorpay Integration (Weekly, Monthly, Quarterly, Yearly)
+- [x] Free vs Premium vs Elite features
+- [x] Webhook handling
+- [x] Frontend subscription page with plan comparison
 
 ### 🗓️ DAY 16 — AI Matchmaking & Recommendations
 - [ ] Compatibility Score (0-100%)
@@ -139,13 +140,35 @@ MingleX is a premium dating application with high-fidelity design, KYC verificat
 
 ## 📊 CURRENT STATUS SUMMARY
 
-### Backend Status
-- **Core**: Node.js/Express setup complete. Prisma ORM configured.
-- **Auth**: Google login works with proper JWT refresh logic. JWT verification middleware ready. Redis blacklist for logout implemented. `last_login_at` and `is_profile_complete` updated in DB.
-- **Database**: Initial schema created with User, Photo, Interest, Swipe, Message, and AdminAction tables.
-- **User APIs**: Full onboarding APIs (`/me`, `/location`, `/interests`) completed with profile completion logic and age validation.
-- **Media APIs**: Photo & KYC upload workflows completed, including signed S3 URLs, size/type validation, DB tracking, and max photo limits.
-- **Discovery**: Discovery feed successfully gated for users who lack a complete profile or missing KYC.
+### Architecture & Core
+- **Framework**: Node.js, Express, TypeScript.
+- **Database**: PostgreSQL (via Prisma ORM). Advanced B-Tree indexing applied for performance scaling.
+- **Caching & Real-time**: Redis deployed for rate-limiting, token blacklisting, and future queuing.
+- **Security**: Hardened with Helmet, CORS, Rate Limiting, HTTP Parameter Pollution (`hpp`), and custom XSS-Sanitization middleware.
+
+### Authentication & Profiles
+- **Authentication**: Firebase Admin SDK integrated for Google Sign-in. Secure HTTP-only refresh tokens and Bearer access tokens implemented.
+- **Profile Onboarding**: Modular REST endpoints to capture bio, gender, preferences, and interests. Automatic `is_profile_complete` computation.
+- **Media Management**: High-performance image processing using `multer` and `sharp`. Automatically resizes uploads to 1080x1080 and compresses to WebP. Presigned URLs used for large KYC video uploads.
+
+### Discovery & Swiping
+- **Algorithm**: Complex Elo-based ranking system. Computes scores based on profile completeness, mutual interests, activity recency, and past swipe velocity.
+- **Geospatial & Filtering**: Implemented Haversine formula for strict distance filtering. Filters users by age, gender preference, and distance.
+- **Swipe Engine**: Rate-limited matching logic. Detects mutual swipes and instantly creates a `Match` record. Records stored efficiently in the `Swipe` table.
+
+### Messaging & Social
+- **Chat System**: REST API for retrieving match history and paginated direct messages. Pre-optimized for future WebSocket integration.
+- **Wishlists & Favorites**: Privacy-aware custom wishlists allowing users to share categorized groups of profiles. Standard robust Favorites system.
+
+### Trust & Safety (Moderation)
+- **User Reporting**: Granular reporting API with a strict 5-reports-per-day rate limit to prevent abuse.
+- **Auto-Hide Defense**: Automated threshold triggers a `discover_enabled = false` flag on any profile receiving 10+ reports, instantly hiding them.
+- **Admin Dashboard**: Moderation queue sorting by highest report counts. Admins can permanently BAN, WARN, or DISMISS cases.
+- **Appeals**: Banned users can submit an appeal text. Admin approvals instantly restore account standing.
+
+### Infrastructure & QA
+- **Testing**: Comprehensive automated test suites (`Jest`, `Supertest`) covering Auth, Discovery, Moderation, and Media. All test suites passing.
+- **Environment**: Setup configurations (`.env.test`, `.env`) and database synchronization commands ready for CI/CD.
 
 ### Frontend Status (Mobile)
 - **UI**: Basic shells for Login, Onboarding, Discovery (Swiping), KYC, and Chat are present.

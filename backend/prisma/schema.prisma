@@ -45,6 +45,52 @@ enum AdminActionType {
   BAN
 }
 
+enum ReportReason {
+  INAPPROPRIATE_CONTENT
+  SPAM
+  HARASSMENT
+  SCAM
+  OTHER
+}
+
+enum ReportStatus {
+  PENDING
+  RESOLVED
+  DISMISSED
+}
+
+enum AppealStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum SubscriptionTier {
+  FREE
+  PREMIUM
+  ELITE
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+enum BillingCycle {
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+enum PaymentStatus {
+  CREATED
+  PAID
+  FAILED
+  REFUNDED
+}
+
 model User {
   id                String    @id @default(uuid())
   firebase_uid      String?   @unique
@@ -71,6 +117,7 @@ model User {
   fcm_token         String?
   boost_expires_at  DateTime?
   profile_views     Int       @default(0)
+  report_count      Int       @default(0)
 
   created_at        DateTime  @default(now())
   updated_at        DateTime  @updatedAt
@@ -89,6 +136,18 @@ model User {
   favorites_received Favorite[] @relation("FavoritesTarget")
   wishlists         Wishlist[]
   wishlisted_in     WishlistMember[] @relation("WishlistedUsers")
+  reports_given     Report[]  @relation("ReportsGiven")
+  reports_received  Report[]  @relation("ReportsReceived")
+  appeals           Appeal[]
+  subscriptions     Subscription[]
+  payments          Payment[]
+
+  @@index([created_at])
+  @@index([last_login_at])
+  @@index([status])
+  @@index([discover_enabled])
+
+  subscription_tier SubscriptionTier @default(FREE)
 }
 
 model Photo {
@@ -128,6 +187,7 @@ model Swipe {
   toUser   User @relation("SwipesTo", fields: [to_user], references: [id])
 
   @@unique([from_user, to_user]) // Prevent duplicate swipes
+  @@index([from_user, to_user])
 }
 
 model Message {
@@ -144,6 +204,8 @@ model Message {
 
   fromUser User @relation("MessagesFrom", fields: [from_user], references: [id])
   toUser   User @relation("MessagesTo", fields: [to_user], references: [id])
+
+  @@index([from_user, to_user, created_at])
 }
 
 model AdminAction {
@@ -167,6 +229,7 @@ model Match {
   user2 User @relation("Matches2", fields: [user2_id], references: [id])
 
   @@unique([user1_id, user2_id])
+  @@index([user1_id, user2_id])
 }
 
 model Favorite {
@@ -202,4 +265,68 @@ model WishlistMember {
   target   User     @relation("WishlistedUsers", fields: [target_id], references: [id])
 
   @@id([wishlist_id, target_id])
+}
+
+model Report {
+  id          String       @id @default(uuid())
+  reporter_id String
+  reported_id String
+  reason      ReportReason
+  evidence    String?      @db.Text
+  status      ReportStatus @default(PENDING)
+  created_at  DateTime     @default(now())
+  updated_at  DateTime     @updatedAt
+
+  reporter User @relation("ReportsGiven", fields: [reporter_id], references: [id])
+  reported User @relation("ReportsReceived", fields: [reported_id], references: [id])
+
+  @@index([reporter_id, reported_id])
+}
+
+model Appeal {
+  id         String       @id @default(uuid())
+  user_id    String
+  reason     String       @db.Text
+  status     AppealStatus @default(PENDING)
+  created_at DateTime     @default(now())
+  updated_at DateTime     @updatedAt
+
+  user User @relation(fields: [user_id], references: [id])
+}
+
+model Subscription {
+  id                      String             @id @default(uuid())
+  user_id                 String
+  tier                    SubscriptionTier
+  billing_cycle           BillingCycle
+  status                  SubscriptionStatus @default(ACTIVE)
+  razorpay_subscription_id String?           @unique
+  starts_at               DateTime           @default(now())
+  expires_at              DateTime
+  created_at              DateTime           @default(now())
+  updated_at              DateTime           @updatedAt
+
+  user User @relation(fields: [user_id], references: [id])
+
+  @@index([user_id, status])
+}
+
+model Payment {
+  id                  String        @id @default(uuid())
+  user_id             String
+  subscription_id     String?
+  razorpay_order_id   String?       @unique
+  razorpay_payment_id String?       @unique
+  razorpay_signature  String?
+  amount              Int           // in paise (INR smallest unit)
+  currency            String        @default("INR")
+  status              PaymentStatus @default(CREATED)
+  tier                SubscriptionTier
+  billing_cycle       BillingCycle
+  created_at          DateTime      @default(now())
+  updated_at          DateTime      @updatedAt
+
+  user User @relation(fields: [user_id], references: [id])
+
+  @@index([user_id])
 }

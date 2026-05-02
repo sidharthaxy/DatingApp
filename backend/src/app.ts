@@ -3,6 +3,8 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import { rateLimit } from 'express-rate-limit';
+import hpp from 'hpp';
+import { xssClean } from './middleware/xss.middleware';
 import { setupSwagger } from './config/swagger';
 
 const app: Express = express();
@@ -14,6 +16,10 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
 
+// Security Hardening
+app.use(hpp()); // Prevent HTTP Parameter Pollution
+app.use(xssClean); // Strip HTML tags from req body/query/params
+
 // Setup Swagger UI
 setupSwagger(app);
 
@@ -24,6 +30,7 @@ const globalLimiter = rateLimit({
   message: { success: false, error: { code: 'RATE_LIMIT_EXCEEDED', message: 'Too many requests' } },
   standardHeaders: true,
   legacyHeaders: false,
+  skip: () => process.env.NODE_ENV === 'test'
 });
 app.use(globalLimiter);
 
@@ -31,13 +38,15 @@ app.use(globalLimiter);
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 mins
   max: 10,
-  message: { success: false, error: { code: 'RATE_LIMIT_EXCEEDED', message: 'Too many auth requests' } }
+  message: { success: false, error: { code: 'RATE_LIMIT_EXCEEDED', message: 'Too many auth requests' } },
+  skip: () => process.env.NODE_ENV === 'test'
 });
 
 const swipeLimiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 1 minute
   max: 50,
-  message: { success: false, error: { code: 'RATE_LIMIT_EXCEEDED', message: 'You are swiping too fast!' } }
+  message: { success: false, error: { code: 'RATE_LIMIT_EXCEEDED', message: 'You are swiping too fast!' } },
+  skip: () => process.env.NODE_ENV === 'test'
 });
 
 // Health check endpoint
@@ -55,6 +64,9 @@ import adminRoutes from './routes/admin.routes';
 import analyticsRoutes from './routes/analytics.routes';
 import favoritesRoutes from './routes/favorites.routes';
 import wishlistRoutes from './routes/wishlist.routes';
+import reportRoutes from './routes/report.routes';
+import appealRoutes from './routes/appeal.routes';
+import subscriptionRoutes from './routes/subscription.routes';
 
 // Routes
 app.use('/api/v1/auth', authLimiter, authRoutes);
@@ -67,6 +79,9 @@ app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/analytics', analyticsRoutes);
 app.use('/api/v1/favorites', favoritesRoutes);
 app.use('/api/v1/wishlists', wishlistRoutes);
+app.use('/api/v1/reports', reportRoutes);
+app.use('/api/v1/appeals', appealRoutes);
+app.use('/api/v1/subscriptions', subscriptionRoutes);
 
 // Global 404 handler
 app.use((req: Request, res: Response) => {

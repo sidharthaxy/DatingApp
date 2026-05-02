@@ -116,41 +116,48 @@ export const getDiscoveryFeed = async (req: AuthenticatedRequest, res: Response)
       const sevenDays = 7 * 24 * 60 * 60 * 1000;
       const oneDay = 24 * 60 * 60 * 1000;
 
-      filteredUsers.sort((a, b) => {
-        const getScore = (u: any) => {
-          let score = 0;
-          if (u.boost_expires_at && u.boost_expires_at.getTime() > now) score += 50;
-          if (now - u.created_at.getTime() < sevenDays) score += 30;
-          if (u.last_login_at && now - u.last_login_at.getTime() < oneDay) score += 20;
-          return score;
-        };
+      const getScore = (u: any) => {
+        let score = 0;
+        if (u.boost_expires_at && u.boost_expires_at.getTime() > now) score += 50;
+        if (now - u.created_at.getTime() < sevenDays) score += 30;
+        if (u.last_login_at && now - u.last_login_at.getTime() < oneDay) score += 20;
+        return score;
+      };
 
-        const scoreA = getScore(a);
-        const scoreB = getScore(b);
+      // Attach score to each user for later use in response
+      const scoredUsers = filteredUsers.map(u => ({ ...u, match_score: getScore(u) }));
 
-        if (scoreB !== scoreA) {
-          return scoreB - scoreA;
-        }
-        
-        // Tie-breaker
+      scoredUsers.sort((a, b) => {
+        if (b.match_score !== a.match_score) return b.match_score - a.match_score;
         return b.created_at.getTime() - a.created_at.getTime();
       });
+
+      // 6. Pagination (RELEVANCE branch — scoredUsers has match_score)
+      const skip = (page - 1) * limit;
+      const paginatedUsers = scoredUsers.slice(skip, skip + limit);
+
+      const cleanUsers = paginatedUsers.map(({ distance, match_score, ...rest }) => ({
+        ...rest,
+        distance_km: Math.round(distance),
+        match_pct: Math.min(100, 50 + match_score),
+      }));
+      const responseData = { users: cleanUsers };
+      await redisClient.setEx(cacheKey, 300, JSON.stringify(responseData));
+      return res.status(200).json({ success: true, data: responseData });
     }
 
-    // 6. Pagination
+    // 6. Pagination (DISTANCE / ACTIVITY / AGE branches)
     const skip = (page - 1) * limit;
     const paginatedUsers = filteredUsers.slice(skip, skip + limit);
 
-    // Remove distance property before sending to client to match schema
-    const cleanUsers = paginatedUsers.map(({ distance, ...rest }) => rest);
+    const cleanUsers = paginatedUsers.map(({ distance, ...rest }) => ({
+      ...rest,
+      distance_km: Math.round(distance),
+      match_pct: 50, // no relevance score outside RELEVANCE sort
+    }));
     const responseData = { users: cleanUsers };
-
     await redisClient.setEx(cacheKey, 300, JSON.stringify(responseData));
-
-    return res.status(200).json({
-      success: true,
-      data: responseData
-    });
+    return res.status(200).json({ success: true, data: responseData });
 
   } catch (error: any) {
     return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: error.message } });

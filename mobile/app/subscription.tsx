@@ -31,6 +31,7 @@ import {
   Rewind,
   MessageSquare,
 } from 'lucide-react-native';
+import RazorpayCheckout from 'react-native-razorpay';
 
 // --- Data ---
 
@@ -358,34 +359,46 @@ export default function SubscriptionScreen() {
 
       const { orderId, amount, keyId } = json.data;
 
-      // Razorpay SDK not yet installed — inform user of order details
-      // In production: open RazorpayCheckout.open() here
-      Alert.alert(
-        'Order Created ✅',
-        `Order ID: ${orderId}\nAmount: ₹${(amount / 100).toFixed(0)}\n\nIntegrate Razorpay SDK to complete payment.\n\nKey: ${keyId}`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Simulate Payment',
-            onPress: async () => {
-              // Simulate a successful verify-payment call (dev only)
-              try {
-                const verifyRes = await apiPost('/api/v1/subscriptions/verify-payment', {
-                  razorpay_order_id: orderId,
-                  razorpay_payment_id: `pay_sim_${Date.now()}`,
-                  razorpay_signature: 'simulated',
-                });
-                const verifyJson = await verifyRes.json();
-                if (verifyJson.success) {
-                  if (user) setUser({ ...user, subscription_tier: selectedPlan.toUpperCase() as any });
-                  setActiveSub({ tier: selectedPlan.toUpperCase(), expires_at: verifyJson.data?.subscription?.expires_at ?? null });
-                  Alert.alert('🎉 Subscribed!', `You are now on ${plan.name}.`);
-                }
-              } catch {}
-            },
-          },
-        ]
-      );
+      const options = {
+        description: `MingleX ${plan.name} - ${BILLING_LABELS[billing]}`,
+        image: 'https://i.imgur.com/3g7Y69t.png', // Replace with your logo
+        currency: 'INR',
+        key: keyId,
+        amount: amount,
+        name: 'MingleX',
+        order_id: orderId,
+        prefill: {
+          email: user?.email || '',
+          contact: '', // Optional: add phone if available
+          name: user?.first_name || '',
+        },
+        theme: { color: plan.id === 'elite' ? '#414BEA' : '#ff7c62' }
+      };
+
+      try {
+        const data = await RazorpayCheckout.open(options);
+        // Handle success
+        const verifyRes = await apiPost('/api/v1/subscriptions/verify-payment', {
+          razorpay_order_id: data.razorpay_order_id,
+          razorpay_payment_id: data.razorpay_payment_id,
+          razorpay_signature: data.razorpay_signature,
+        });
+        const verifyJson = await verifyRes.json();
+        if (verifyJson.success) {
+          if (user) setUser({ ...user, subscription_tier: selectedPlan.toUpperCase() as any });
+          setActiveSub({ tier: selectedPlan.toUpperCase(), expires_at: verifyJson.data?.subscription?.expires_at ?? null });
+          Alert.alert('🎉 Subscribed!', `You are now on ${plan.name}.`);
+        } else {
+          Alert.alert('Verification Failed', verifyJson.error?.message || 'Payment verification failed.');
+        }
+      } catch (error: any) {
+        // User cancelled or payment failed
+        if (error.code === 2) {
+          console.log('[Razorpay] Payment cancelled');
+        } else {
+          Alert.alert('Payment Error', error.description || 'An error occurred during payment.');
+        }
+      }
     } catch (e: any) {
       Alert.alert('Error', e.message);
     } finally {

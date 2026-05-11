@@ -35,14 +35,14 @@ export const getSignedUploadUrl = async (req: AuthenticatedRequest, res: Respons
     const MAX_PHOTO_SIZE = 5 * 1024 * 1024; // 5MB
     const MAX_KYC_SIZE = 20 * 1024 * 1024; // 20MB
     const ALLOWED_PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-    const ALLOWED_KYC_TYPES = ['video/mp4', 'video/quicktime'];
+    const ALLOWED_KYC_TYPES = ['video/mp4', 'video/quicktime', 'image/jpeg', 'image/png', 'image/webp'];
 
     if (type === 'photo') {
       if (fileSize > MAX_PHOTO_SIZE) return res.status(400).json({ success: false, error: { code: 'FILE_TOO_LARGE', message: 'Photo must be under 5MB' } });
       if (!ALLOWED_PHOTO_TYPES.includes(contentType)) return res.status(400).json({ success: false, error: { code: 'INVALID_TYPE', message: 'Only JPEG, PNG, WEBP allowed for photos' } });
     } else if (type === 'kyc') {
       if (fileSize > MAX_KYC_SIZE) return res.status(400).json({ success: false, error: { code: 'FILE_TOO_LARGE', message: 'KYC Video must be under 20MB' } });
-      if (!ALLOWED_KYC_TYPES.includes(contentType)) return res.status(400).json({ success: false, error: { code: 'INVALID_TYPE', message: 'Only MP4, MOV allowed for KYC' } });
+      if (!ALLOWED_KYC_TYPES.includes(contentType)) return res.status(400).json({ success: false, error: { code: 'INVALID_TYPE', message: 'Only MP4, MOV, or standard images allowed for KYC' } });
     }
 
     let key = '';
@@ -191,7 +191,8 @@ export const uploadPhoto = async (req: AuthenticatedRequest, res: Response) => {
 
     await s3.send(command);
 
-    const publicUrl = `http://127.0.0.1:9000/${BUCKET_NAME}/${key}`;
+    const endpoint = process.env.STORAGE_ENDPOINT || 'http://127.0.0.1:9000';
+    const publicUrl = `${endpoint}/${BUCKET_NAME}/${key}`;
 
     // Save to DB
     const photo = await prisma.photo.create({

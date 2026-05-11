@@ -14,21 +14,9 @@ import {
   Manrope_700Bold 
 } from '@expo-google-fonts/manrope';
 import { SpaceMono_400Regular } from '@expo-google-fonts/space-mono';
-import auth from '@react-native-firebase/auth';
+import { auth } from '@/src/lib/firebase';
 import { useAuthStore } from '@/src/store/authStore';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-
-// ─── Connect to Firebase Auth Emulator in local dev ───────────────────────────
-// Uses the same LAN IP as the backend, port 9099.
-if (process.env.EXPO_PUBLIC_USE_EMULATOR === 'true') {
-  const emulatorUrl = process.env.EXPO_PUBLIC_EMULATOR_URL || 'http://localhost:9099';
-  try {
-    auth().useEmulator(emulatorUrl);
-    console.log(`[Firebase Auth] Connected to emulator at ${emulatorUrl}`);
-  } catch (e) {
-    // Already connected on hot reload — safe to ignore
-  }
-}
 
 
 export default function RootLayout() {
@@ -57,6 +45,8 @@ export default function RootLayout() {
     const inAuthGroup = segments[0] === '(auth)';
     const inTabsGroup = segments[0] === '(tabs)';
     const inAppealScreen = segments[0] === 'appeal';
+    const inTermsScreen = segments[0] === 'terms';
+    const inOnboarding = segments[0] === 'onboarding';
 
     if (!user && !inAuthGroup) {
       // Not logged in — send to login
@@ -69,8 +59,11 @@ export default function RootLayout() {
       if (user.is_profile_complete && user.status === 'APPROVED') {
         router.replace('/(tabs)/discovery');
       } else {
-        router.replace('/onboarding');
+        router.replace('/terms');
       }
+    } else if (user && !user.is_profile_complete && !inTermsScreen && !inOnboarding && !inAppealScreen && !inAuthGroup) {
+      // Enforce terms/onboarding flow
+      router.replace('/terms');
     }
   }, [user, isLoading, segments]);
 
@@ -90,6 +83,7 @@ export default function RootLayout() {
           <Stack.Screen name="index" />
           <Stack.Screen name="(auth)" />
           <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="terms" />
           <Stack.Screen name="onboarding" />
           <Stack.Screen name="kyc" />
           <Stack.Screen name="subscription" />

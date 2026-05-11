@@ -3,6 +3,7 @@ import { PrismaClient, RelationshipGoal } from '@prisma/client';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
 import { redisClient } from '../config/redis';
 import crypto from 'crypto';
+import { computeCompatibility } from '../services/compatibility.service';
 
 const prisma = new PrismaClient();
 
@@ -64,8 +65,15 @@ export const getDiscoveryFeed = async (req: AuthenticatedRequest, res: Response)
         ...(interests.length > 0 ? { user_interests: { some: { interest_id: { in: interests } } } } : {}),
         swipes_to: { none: { from_user: userId } }
       },
-      include: { photos: true }
+      include: { photos: true, user_interests: true }
     });
+
+    // Load viewer's interests for compatibility scoring
+    const viewerInterests = await prisma.userInterest.findMany({
+      where: { user_id: userId! },
+      select: { interest_id: true },
+    });
+    const viewerInterestIds = viewerInterests.map((ui) => ui.interest_id);
 
     // 4. In-memory Distance Filtering
     const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
@@ -86,7 +94,23 @@ export const getDiscoveryFeed = async (req: AuthenticatedRequest, res: Response)
       if (userHasLocation && u.latitude != null && u.longitude != null) {
         dist = calculateDistance(user.latitude!, user.longitude!, u.latitude, u.longitude);
       }
-      return { ...u, distance: dist };
+      // Compute real compatibility score
+      const { score } = computeCompatibility({
+        viewerInterestIds,
+        viewerGoal: user.relationship_goal ?? null,
+        viewerDob: user.dob ?? null,
+        viewerLat: user.latitude ?? null,
+        viewerLng: user.longitude ?? null,
+        targetInterestIds: u.user_interests.map((ui: any) => ui.interest_id),
+        targetGoal: u.relationship_goal ?? null,
+        targetDob: u.dob ?? null,
+        targetLat: u.latitude ?? null,
+        targetLng: u.longitude ?? null,
+        targetLastLogin: u.last_login_at ?? null,
+        targetBoostExpiresAt: u.boost_expires_at ?? null,
+        targetTier: u.subscription_tier,
+      });
+      return { ...u, distance: dist, compatibility_score: score };
     });
 
     // If the requesting user has no location, skip distance filter
@@ -132,14 +156,14 @@ export const getDiscoveryFeed = async (req: AuthenticatedRequest, res: Response)
         return b.created_at.getTime() - a.created_at.getTime();
       });
 
-      // 6. Pagination (RELEVANCE branch — scoredUsers has match_score)
+      // 6. Pagination (RELEVANCE branch)
       const skip = (page - 1) * limit;
       const paginatedUsers = scoredUsers.slice(skip, skip + limit);
 
-      const cleanUsers = paginatedUsers.map(({ distance, match_score, ...rest }) => ({
+      const cleanUsers = paginatedUsers.map(({ distance, match_score, user_interests, compatibility_score, ...rest }) => ({
         ...rest,
         distance_km: Math.round(distance),
-        match_pct: Math.min(100, 50 + match_score),
+        match_pct: compatibility_score, // real score in RELEVANCE mode
       }));
       const responseData = { users: cleanUsers };
       await redisClient.setEx(cacheKey, 300, JSON.stringify(responseData));
@@ -150,10 +174,10 @@ export const getDiscoveryFeed = async (req: AuthenticatedRequest, res: Response)
     const skip = (page - 1) * limit;
     const paginatedUsers = filteredUsers.slice(skip, skip + limit);
 
-    const cleanUsers = paginatedUsers.map(({ distance, ...rest }) => ({
+    const cleanUsers = paginatedUsers.map(({ distance, user_interests, compatibility_score, ...rest }) => ({
       ...rest,
       distance_km: Math.round(distance),
-      match_pct: 50, // no relevance score outside RELEVANCE sort
+      match_pct: compatibility_score, // real compatibility score
     }));
     const responseData = { users: cleanUsers };
     await redisClient.setEx(cacheKey, 300, JSON.stringify(responseData));

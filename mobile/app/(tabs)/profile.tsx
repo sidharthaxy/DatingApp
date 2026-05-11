@@ -9,7 +9,7 @@ import { Image } from '@/components/ui/image';
 import { Button, ButtonText } from '@/components/ui/button';
 import { useAuthStore } from '@/src/store/authStore';
 import { useRouter, type Href } from 'expo-router';
-import { Settings, Pencil, ShieldCheck, Activity, Sparkles, ChevronRight, LogOut, Crown, Heart, List, Eye } from 'lucide-react-native';
+import { Settings, Pencil, ShieldCheck, Activity, Sparkles, ChevronRight, LogOut, Crown, Heart, List, Eye, ShieldAlert, MessageCircleHeart } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { apiGet } from '@/src/lib/api';
 
@@ -156,12 +156,52 @@ export default function ProfileScreen() {
              <ChevronRight size={18} color="#afadac" />
           </TouchableOpacity>
 
-          <TouchableOpacity className="flex-row items-center justify-between py-4 border-b border-surface-container-low">
+          <TouchableOpacity className="flex-row items-center justify-between py-4 border-b border-surface-container-low"
+            onPress={() => router.push('/prompts' as Href)}
+          >
+             <HStack className="items-center space-x-4">
+                <View className="w-10 h-10 rounded-xl items-center justify-center" style={{ backgroundColor: '#e6b80015' }}>
+                   <MessageCircleHeart size={18} color="#e6b800" />
+                </View>
+                <Text className="font-body text-sm font-bold text-on-surface">Profile Prompts</Text>
+             </HStack>
+             <ChevronRight size={18} color="#afadac" />
+          </TouchableOpacity>
+
+          <TouchableOpacity className="flex-row items-center justify-between py-4 border-b border-surface-container-low"
+            onPress={() => router.push('/activity-feed' as Href)}
+          >
              <HStack className="items-center space-x-4">
                 <View className="w-10 h-10 bg-surface-container-low rounded-xl items-center justify-center">
                    <Activity size={18} color="#afadac" />
                 </View>
-                <Text className="font-body text-sm font-bold text-on-surface">Push Notifications</Text>
+                <Text className="font-body text-sm font-bold text-on-surface">Activity Feed</Text>
+             </HStack>
+             <ChevronRight size={18} color="#afadac" />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            className="flex-row items-center justify-between py-4 border-b border-surface-container-low"
+            onPress={() => router.push('/safety-center' as Href)}
+          >
+             <HStack className="items-center space-x-4">
+                <View className="w-10 h-10 rounded-xl items-center justify-center" style={{ backgroundColor: '#ff3b3015' }}>
+                   <ShieldAlert size={18} color="#ff3b30" />
+                </View>
+                <Text className="font-body text-sm font-bold text-on-surface">Safety Center</Text>
+             </HStack>
+             <ChevronRight size={18} color="#afadac" />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            className="flex-row items-center justify-between py-4 border-b border-surface-container-low"
+            onPress={() => router.push('/recommendations' as Href)}
+          >
+             <HStack className="items-center space-x-4">
+                <View className="w-10 h-10 rounded-xl items-center justify-center" style={{ backgroundColor: '#FFD70015' }}>
+                   <Sparkles size={18} color="#e6b800" />
+                </View>
+                <Text className="font-body text-sm font-bold text-on-surface">AI Daily Picks</Text>
              </HStack>
              <ChevronRight size={18} color="#afadac" />
           </TouchableOpacity>

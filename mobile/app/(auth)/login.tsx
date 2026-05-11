@@ -22,12 +22,13 @@ import { Image } from '@/components/ui/image';
 import { useAuthStore } from '@/src/store/authStore';
 import { SmartphoneIcon } from 'lucide-react-native';
 import { router } from 'expo-router';
+import { auth, GoogleAuthProvider, signInWithPopup } from '@/src/lib/firebase';
 import { registerForPushNotifications } from '@/src/lib/notifications';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 const USE_EMULATOR = process.env.EXPO_PUBLIC_USE_EMULATOR === 'true';
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000';
-const EMULATOR_URL = process.env.EXPO_PUBLIC_EMULATOR_URL || 'http://localhost:9099';
+const API_URL = process.env.EXPO_PUBLIC_API_URL as string;
+const EMULATOR_URL = process.env.EXPO_PUBLIC_EMULATOR_URL as string;
 const FIREBASE_API_KEY = process.env.EXPO_PUBLIC_FIREBASE_API_KEY || 'fake-api-key';
 
 // ─── Emulator Google Sign-In Modal ────────────────────────────────────────────
@@ -151,15 +152,37 @@ export default function LoginScreen() {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [emulatorModalVisible, setEmulatorModalVisible] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [isLogin, setIsLogin] = useState(true);
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
+
+  // Simple btoa polyfill for React Native environments where it might be missing
+  const btoaPolyfill = (input: string) => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+    let str = input;
+    let output = '';
+    for (let block = 0, charCode, i = 0, map = chars;
+         str.charAt(i | 0) || (map = '=', i % 1);
+         output += map.charAt(63 & block >> 8 - i % 1 * 8)) {
+      charCode = str.charCodeAt(i += 3 / 4);
+      if (charCode > 0xFF) {
+        throw new Error("'btoa' failed: The string to be encoded contains characters outside of the Latin1 range.");
+      }
+      block = block << 8 | charCode;
+    }
+    return output;
+  };
 
   // Calls the Firebase Auth Emulator REST API with the user-supplied email
   const handleEmulatorSignIn = async (email: string, displayName: string) => {
     // Build a fake Google unsigned JWT with the provided user info
-    const b64url = (obj: object) =>
-      btoa(JSON.stringify(obj))
+    const b64url = (obj: object) => {
+      const str = JSON.stringify(obj);
+      const b64 = typeof btoa !== 'undefined' ? btoa(str) : btoaPolyfill(str);
+      return b64
         .replace(/\+/g, '-')
         .replace(/\//g, '_')
         .replace(/=/g, '');
+    };
 
     // Create a stable sub (uid) from the email
     const uid = `google-emulator-${email.replace(/[^a-zA-Z0-9]/g, '-')}`;
@@ -184,7 +207,7 @@ export default function LoginScreen() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         postBody: `id_token=${fakeGoogleJwt}&providerId=google.com`,
-        requestUri: 'http://localhost',
+        requestUri: API_URL,
         returnIdpCredential: true,
         returnSecureToken: true,
       }),
@@ -193,10 +216,51 @@ export default function LoginScreen() {
     if (emData.error) throw new Error(emData.error.message);
 
     // Exchange Firebase token for our backend JWT
+    await finalizeLogin(emData.idToken);
+    setEmulatorModalVisible(false);
+  };
+
+  const handleGoogleLogin = async () => {
+    setErrorMsg('');
+    
+    if (Platform.OS === 'web') {
+      setGoogleLoading(true);
+      try {
+        const provider = new GoogleAuthProvider();
+        // This will open the REAL Firebase Emulator popup window on Web
+        const userCredential = await signInWithPopup(auth, provider);
+        const idToken = await userCredential.user.getIdToken();
+        
+        // Exchange Firebase token for our backend JWT
+        await finalizeLogin(idToken);
+      } catch (error: any) {
+        console.error('[Web Google Login Error]', error);
+        setErrorMsg(error.message || 'Google Sign-In failed');
+      } finally {
+        setGoogleLoading(false);
+      }
+      return;
+    }
+
+    if (USE_EMULATOR) {
+      // Native Emulator: Show the in-app simulation modal
+      setEmulatorModalVisible(true);
+    } else {
+      // Production Native: requires real Google OAuth client IDs
+      setGoogleLoading(true);
+      setErrorMsg(
+        'Production Google Sign-In is not configured.\n' +
+        'Set EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID in your .env file.'
+      );
+      setGoogleLoading(false);
+    }
+  };
+
+  const finalizeLogin = async (idToken: string) => {
     const res = await fetch(`${API_URL}/api/v1/auth/google`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ idToken: emData.idToken }),
+      body: JSON.stringify({ idToken }),
     });
     const data = await res.json();
     if (!data.success) throw new Error(data.error?.message || 'Login failed');
@@ -211,8 +275,6 @@ export default function LoginScreen() {
       subscription_tier: data.data.user.subscription_tier ?? 'FREE',
     });
 
-    setEmulatorModalVisible(false);
-
     // Register FCM token with backend (non-blocking)
     registerForPushNotifications().catch(() => {});
 
@@ -220,22 +282,6 @@ export default function LoginScreen() {
       router.replace('/(tabs)/discovery');
     } else {
       router.replace('/onboarding');
-    }
-  };
-
-  const handleGoogleLogin = async () => {
-    setErrorMsg('');
-    if (USE_EMULATOR) {
-      // Show the in-app emulator IDP widget
-      setEmulatorModalVisible(true);
-    } else {
-      // Production: requires real Google OAuth client IDs
-      setGoogleLoading(true);
-      setErrorMsg(
-        'Production Google Sign-In is not configured.\n' +
-        'Set EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID in your .env file.'
-      );
-      setGoogleLoading(false);
     }
   };
 
@@ -255,103 +301,144 @@ export default function LoginScreen() {
         onSignIn={handleEmulatorSignIn}
       />
 
-      <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }} showsVerticalScrollIndicator={false}>
-        <VStack className="items-center px-6 py-12 space-y-12">
-
-          {/* Branding */}
-          <VStack className="items-center space-y-4">
-            <View className="items-center justify-center w-24 h-24 mb-6">
-              <Image
-                source={require('../../assets/images/minglexlogo.png')}
-                className="w-full h-full"
-                resizeMode="contain"
-                alt="Minglex Logo"
-              />
-            </View>
-            <Heading className="font-headline font-bold text-5xl tracking-tighter text-primary">
-              Minglex
-            </Heading>
-            <Text className="font-label text-on-surface-variant text-[10px] uppercase tracking-[0.2em] text-center">
-              Digital Kineticism in Dating
-            </Text>
-          </VStack>
-
-          {/* Login Card */}
-          <Box className="w-full max-w-md bg-surface-container-lowest p-8 rounded-lg shadow-[0_32px_64px_-12px_rgba(47,47,46,0.06)] space-y-8 relative overflow-hidden">
+      <ScrollView 
+        contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingVertical: 20 }} 
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+      >
+        <VStack className="items-center px-6">
+          {/* Card Island */}
+          <Box className="w-full max-w-md bg-surface-container-lowest p-6 rounded-3xl shadow-2xl space-y-6 relative overflow-hidden border border-outline-variant/10">
             <View
               className="absolute -top-24 -right-24 w-48 h-48 signature-gradient opacity-10 rounded-full blur-3xl"
               style={{ position: 'absolute' }}
             />
 
-            <VStack space="xs">
-              <Heading className="font-headline text-2xl text-on-surface">Welcome back</Heading>
-              <Text className="font-body text-on-surface-variant">Sign in to continue your journey.</Text>
-              {USE_EMULATOR && (
-                <Text className="font-label text-[10px] text-primary uppercase tracking-wider mt-1">
-                  🔧 Local emulator mode
+            {/* Branding - Logo Left, Text Right */}
+            <HStack className="items-center space-x-4 mb-2">
+              <View className="w-16 h-16 items-center justify-center">
+                <Image
+                  source={require('../../assets/images/minglexlogo.png')}
+                  className="w-full h-full"
+                  resizeMode="contain"
+                  alt="Minglex Logo"
+                />
+              </View>
+              <VStack className="justify-center">
+                <Heading className="font-headline font-bold text-3xl tracking-tighter text-primary leading-none">
+                  Minglex
+                </Heading>
+                <Text className="font-label text-on-surface-variant text-[9px] uppercase tracking-[0.15em] mt-0.5">
+                  Digital Kineticism in Dating
                 </Text>
+              </VStack>
+            </HStack>
+
+            {/* Header */}
+            <VStack space="xs">
+              <Heading className="font-headline text-2xl text-on-surface">
+                {isLogin ? 'Welcome back' : 'Create account'}
+              </Heading>
+              <Text className="font-body text-sm text-on-surface-variant">
+                {isLogin ? 'Sign in to continue your journey.' : 'Join the kinetic dating experience today.'}
+              </Text>
+              {USE_EMULATOR && (
+                <View className="flex-row items-center space-x-1 mt-1">
+                  <View className="w-2 h-2 rounded-full bg-primary" />
+                  <Text className="font-label text-[10px] text-primary uppercase tracking-wider">
+                    Local emulator mode
+                  </Text>
+                </View>
               )}
             </VStack>
 
             {errorMsg ? (
-              <View className="p-3 bg-error/10 rounded border border-error/20">
+              <View className="p-3 bg-error/10 rounded-xl border border-error/20">
                 <Text className="text-error font-body text-xs text-center">{errorMsg}</Text>
               </View>
             ) : null}
 
+            {/* Auth Buttons */}
             <VStack space="md">
-              {/* Google Login */}
               <Button
-                className="w-full h-14 bg-surface-container-high border-b-2 border-outline-variant/20 active:bg-surface-container-highest flex-row items-center justify-center space-x-3 rounded"
+                className="w-full h-14 bg-surface-container-high border-b-2 border-outline-variant/10 active:bg-surface-container-highest flex-row items-center justify-center space-x-3 rounded-2xl"
                 onPress={handleGoogleLogin}
                 disabled={googleLoading}
               >
-                {googleLoading
-                  ? <ButtonSpinner />
-                  : <Text className="font-label font-bold text-sm text-on-surface tracking-wide">
-                      Continue with Google
-                    </Text>
-                }
+                {googleLoading ? (
+                  <ButtonSpinner />
+                ) : (
+                  <Text className="font-label font-bold text-sm text-on-surface tracking-wide">
+                    Continue with Google
+                  </Text>
+                )}
               </Button>
 
-              {/* Phone Login */}
               <Button
-                className="w-full h-14 signature-gradient shadow-lg shadow-primary/20 active:opacity-90 flex-row items-center justify-center space-x-3 rounded"
+                className="w-full h-14 signature-gradient shadow-lg shadow-primary/20 active:opacity-90 flex-row items-center justify-center space-x-3 rounded-2xl"
                 onPress={handlePhoneLogin}
                 disabled={googleLoading}
               >
                 <ButtonIcon as={SmartphoneIcon} className="text-white" />
-                <ButtonText className="font-label font-bold text-sm text-white tracking-wide">Login with Phone</ButtonText>
+                <ButtonText className="font-label font-bold text-sm text-white tracking-wide">
+                  {isLogin ? 'Login with Phone' : 'Sign up with Phone'}
+                </ButtonText>
               </Button>
             </VStack>
 
+            {/* Toggle Login/Signup */}
+            <TouchableOpacity 
+              onPress={() => {
+                setIsLogin(!isLogin);
+                setErrorMsg('');
+              }} 
+              className="self-center py-2"
+            >
+              <Text className="font-label text-xs text-primary uppercase tracking-wider font-bold">
+                {isLogin ? "New to Minglex? Sign Up" : "Already a member? Sign In"}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Agreement for new accounts */}
+            {!isLogin && (
+              <TouchableOpacity 
+                onPress={() => setAgreedToTerms(!agreedToTerms)}
+                className="flex-row items-start space-x-3 pt-2"
+                activeOpacity={0.7}
+              >
+                <Box className={`w-5 h-5 rounded-md border-2 items-center justify-center mt-0.5 ${agreedToTerms ? 'bg-primary border-primary' : 'border-outline-variant'}`}>
+                  {agreedToTerms && <Text className="text-white text-[10px] font-bold">✓</Text>}
+                </Box>
+                <Text className="font-body text-[11px] text-on-surface-variant flex-1 leading-4">
+                  I agree to the <Text className="text-primary font-medium">Terms of Service</Text> and <Text className="text-primary font-medium">Privacy Policy</Text>.
+                </Text>
+              </TouchableOpacity>
+            )}
+
             <HStack className="items-center space-x-4">
-              <View className="flex-1 h-[1px] bg-outline-variant/20" />
+              <View className="flex-1 h-[1px] bg-outline-variant/10" />
               <Text className="font-label text-[10px] text-outline uppercase tracking-widest text-center">or</Text>
-              <View className="flex-1 h-[1px] bg-outline-variant/20" />
+              <View className="flex-1 h-[1px] bg-outline-variant/10" />
             </HStack>
 
-            <Button variant="link" className="self-center">
-              <Text className="font-label text-xs text-on-surface-variant hover:text-primary uppercase tracking-wider">
-                Trouble logging in?
+            <Button variant="link" className="self-center h-auto p-0">
+              <Text className="font-label text-[10px] text-on-surface-variant hover:text-primary uppercase tracking-widest">
+                Trouble accessing account?
               </Text>
             </Button>
           </Box>
 
-          <HStack space="xs" className="justify-center">
-            <View className="w-1.5 h-1.5 rounded-full bg-primary/20" />
-            <View className="w-1.5 h-1.5 rounded-full bg-primary" />
-            <View className="w-1.5 h-1.5 rounded-full bg-primary/20" />
+          <HStack space="sm" className="justify-center mt-8">
+            <View className={`w-1.5 h-1.5 rounded-full ${isLogin ? 'bg-primary' : 'bg-primary/20'}`} />
+            <View className={`w-1.5 h-1.5 rounded-full ${!isLogin ? 'bg-primary' : 'bg-primary/20'}`} />
           </HStack>
-
         </VStack>
       </ScrollView>
 
-      <View className="p-8 items-center">
-        <Text className="font-body text-[10px] text-on-surface-variant max-w-[280px] text-center leading-relaxed">
-          By clicking Log In, you agree with our{' '}
-          <Text className="text-on-surface font-medium underline">Terms</Text> and{' '}
-          <Text className="text-on-surface font-medium underline">Privacy Policy</Text>.
+      {/* Simplified Footer */}
+      <View className="pb-8 pt-4 items-center border-t border-outline-variant/5">
+        <Text className="font-label text-[9px] text-outline uppercase tracking-widest">
+          Minglex &copy; 2026 &bull; Kinetic Dating Experience
         </Text>
       </View>
     </KeyboardAvoidingView>

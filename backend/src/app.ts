@@ -67,6 +67,9 @@ import wishlistRoutes from './routes/wishlist.routes';
 import reportRoutes from './routes/report.routes';
 import appealRoutes from './routes/appeal.routes';
 import subscriptionRoutes from './routes/subscription.routes';
+import recommendationsRoutes from './routes/recommendations.routes';
+import safetyRoutes from './routes/safety.routes';
+import socialRoutes from './routes/social.routes';
 
 // Routes
 app.use('/api/v1/auth', authLimiter, authRoutes);
@@ -82,6 +85,9 @@ app.use('/api/v1/wishlists', wishlistRoutes);
 app.use('/api/v1/reports', reportRoutes);
 app.use('/api/v1/appeals', appealRoutes);
 app.use('/api/v1/subscriptions', subscriptionRoutes);
+app.use('/api/v1/recommendations', recommendationsRoutes);
+app.use('/api/v1/safety', safetyRoutes);
+app.use('/api/v1/social', socialRoutes);
 
 // Global 404 handler
 app.use((req: Request, res: Response) => {

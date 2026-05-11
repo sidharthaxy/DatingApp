@@ -97,4 +97,59 @@ describe('Socket.IO Chat', () => {
       done();
     });
   });
+
+  it('should allow sending voice notes with media_url', (done) => {
+    const token1 = jwt.sign({ id: user1Id }, JWT_SECRET);
+    const token2 = jwt.sign({ id: user2Id }, JWT_SECRET);
+
+    clientSocket1 = Client(`http://localhost:${port}`, { auth: { token: token1 } });
+    clientSocket2 = Client(`http://localhost:${port}`, { auth: { token: token2 } });
+
+    let connectedCount = 0;
+    const onConnect = () => {
+      connectedCount++;
+      if (connectedCount === 2) {
+        clientSocket1.emit('sendMessage', { partnerId: user2Id, content: '', media_url: 'http://example.com/audio.m4a' });
+      }
+    };
+
+    clientSocket1.on('connect', onConnect);
+    clientSocket2.on('connect', onConnect);
+
+    clientSocket2.on('receiveMessage', (data) => {
+      expect(data.message.media_url).toBe('http://example.com/audio.m4a');
+      done();
+    });
+  });
+
+  it('should pass WebRTC signaling events', (done) => {
+    const token1 = jwt.sign({ id: user1Id }, JWT_SECRET);
+    const token2 = jwt.sign({ id: user2Id }, JWT_SECRET);
+
+    clientSocket1 = Client(`http://localhost:${port}`, { auth: { token: token1 } });
+    clientSocket2 = Client(`http://localhost:${port}`, { auth: { token: token2 } });
+
+    let connectedCount = 0;
+    const onConnect = () => {
+      connectedCount++;
+      if (connectedCount === 2) {
+        clientSocket1.emit('call_initiated', { partnerId: user2Id });
+      }
+    };
+
+    clientSocket1.on('connect', onConnect);
+    clientSocket2.on('connect', onConnect);
+
+    clientSocket2.on('call_incoming', (data) => {
+      expect(data.from).toBe(user1Id);
+      // Now test offer
+      clientSocket1.emit('webrtc_offer', { partnerId: user2Id, offer: { type: 'offer', sdp: 'test' } });
+    });
+
+    clientSocket2.on('webrtc_offer', (data) => {
+      expect(data.from).toBe(user1Id);
+      expect(data.offer.sdp).toBe('test');
+      done();
+    });
+  });
 });

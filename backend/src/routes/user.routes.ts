@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth.middleware';
-import { getMe, updateMe, updateLocation, updatePreferences, toggleDiscover, updateInterests, updateFcmToken, boostUser, getInterests } from '../controllers/user.controller';
+import { getMe, updateMe, updateLocation, updatePreferences, toggleDiscover, updateInterests, updateFcmToken, boostUser, getInterests, createCustomInterest } from '../controllers/user.controller';
 import { validate } from '../middleware/validate.middleware';
 import { updateMeSchema, updateLocationSchema, updateInterestsSchema, updateFcmTokenSchema } from '../validators/user.validator';
 
@@ -18,5 +18,6 @@ router.post('/discover-toggle', toggleDiscover);
 router.post('/fcm-token', validate(updateFcmTokenSchema), updateFcmToken);
 router.post('/boost', boostUser);
 router.get('/interests/list', getInterests);
+router.post('/interests/custom', createCustomInterest);
 
 export default router;

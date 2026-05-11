@@ -14,7 +14,9 @@ export interface User {
   subscription_tier: SubscriptionTier;
 }
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000';
+import { Platform } from 'react-native';
+
+const API_URL = process.env.EXPO_PUBLIC_API_URL as string;
 const REFRESH_TOKEN_KEY = '@minglex_refresh_token';
 const REFRESH_TOKEN_LOCK_KEY = '@minglex_refresh_lock';
 

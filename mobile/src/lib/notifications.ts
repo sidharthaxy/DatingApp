@@ -27,6 +27,10 @@ import * as Notifications from 'expo-notifications';
  * Safe to call multiple times — the OS caches the token.
  */
 export const registerForPushNotifications = async (): Promise<void> => {
+  // Skip on Web to avoid VAPID key errors if not configured
+  if (Platform.OS === 'web') {
+    return;
+  }
   try {
     // Android: set a notification channel
     if (Platform.OS === 'android') {

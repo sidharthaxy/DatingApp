@@ -214,3 +214,28 @@ export const getInterests = async (req: Request, res: Response) => {
     return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: error.message } });
   }
 };
+
+export const createCustomInterest = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { name } = req.body;
+    if (!name) return res.status(400).json({ success: false, error: { message: 'Name is required' } });
+
+    // Check if it already exists
+    let interest = await prisma.interest.findFirst({
+      where: { name: { equals: name, mode: 'insensitive' } }
+    });
+
+    if (!interest) {
+      interest = await prisma.interest.create({
+        data: {
+          name,
+          category: 'User Added'
+        }
+      });
+    }
+
+    return res.status(201).json({ success: true, data: interest });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: error.message } });
+  }
+};

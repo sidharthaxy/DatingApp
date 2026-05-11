@@ -1,130 +1,41 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #414BEA;
+  --color-primary-light: #6E76F1;
+  --color-primary-dark: #2D35A4;
+  --color-surface: #F8F9FE;
+  --color-surface-card: #FFFFFF;
+  --color-on-surface: #1A1C1E;
+  --color-on-surface-variant: #44474E;
+  
+  --font-headline: "Manrope", sans-serif;
+  --font-body: "Inter", sans-serif;
+}
+
+/* Base styles */
 :root {
-  --primary: #A230ED;
-  --secondary: #E53A9B;
-  --bg-dark: #1A1A2E;
-  --bg-card: #282845;
-  --text-light: #FFFFFF;
+  background-color: #F8F9FE;
+  color: #1A1C1E;
 }
 
 body {
   margin: 0;
-  font-family: 'Poppins', sans-serif;
-  background-color: var(--bg-dark);
-  color: var(--text-light);
+  font-family: var(--font-body);
 }
 
-.container {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 2rem;
+h1, h2, h3, h4 {
+  font-family: var(--font-headline);
 }
 
-.admin-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  border-bottom: 2px solid var(--primary);
-  padding-bottom: 1rem;
-  margin-bottom: 2rem;
+/* Utilities */
+@utility signature-gradient {
+  background: linear-gradient(135deg, #414BEA 0%, #6E76F1 100%);
 }
 
-.admin-header h1 {
-  font-size: 2rem;
-  margin: 0;
-  color: var(--secondary);
+@utility signature-text-gradient {
+  background: linear-gradient(135deg, #414BEA 0%, #6E76F1 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
-
-.user-grid {
-  display: grid;
-  gap: 2rem;
-  grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
-}
-
-.user-card {
-  background: var(--bg-card);
-  border-radius: 12px;
-  padding: 1.5rem;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-}
-
-.card-header {
-  display: flex;
-  gap: 1.5rem;
-  margin-bottom: 1rem;
-}
-
-.profile-img {
-  width: 100px;
-  height: 100px;
-  border-radius: 50%;
-  object-fit: cover;
-  border: 3px solid var(--primary);
-}
-
-.user-info h2 { margin: 0 0 0.5rem; }
-.user-info p { margin: 0; color: #ccc; font-size: 0.9rem; }
-
-.media-section {
-  display: flex;
-  gap: 1rem;
-  margin-bottom: 1.5rem;
-}
-
-.map-placeholder, .video-placeholder {
-  flex: 1;
-  background: #3a3a5a;
-  height: 120px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  border-radius: 8px;
-  text-align: center;
-  font-size: 0.9rem;
-}
-
-.action-section {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-button {
-  cursor: pointer;
-  border: none;
-  border-radius: 8px;
-  padding: 0.8rem;
-  font-weight: bold;
-  transition: 0.2s;
-}
-
-.btn-approve {
-  background: #4ade80;
-  color: #000;
-  width: 100%;
-}
-
-.btn-approve:hover { filter: brightness(1.1); }
-
-.reject-box {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  background: #1f1f33;
-  padding: 1rem;
-  border-radius: 8px;
-}
-
-.reject-box select, .reject-box input {
-  padding: 0.5rem;
-  border-radius: 4px;
-  border: 1px solid #444;
-  background: #fff;
-  color: #000;
-}
-
-.btn-reject {
-  background: #ef4444;
-  color: #fff;
-}
-.btn-reject:hover { filter: brightness(1.1); }

@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { io, Socket } from 'socket.io-client';
 import { useAuthStore } from './authStore';
 
-const BACKEND_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000';
+const BACKEND_URL = process.env.EXPO_PUBLIC_API_URL as string;
 
 export interface Message {
   id: string;
@@ -41,7 +41,7 @@ export interface ChatState {
 
   connectSocket: () => void;
   disconnectSocket: () => void;
-  sendMessage: (toUserId: string, content: string) => void;
+  sendMessage: (toUserId: string, content: string, mediaUrl?: string) => void;
   setTyping: (toUserId: string, isTyping: boolean) => void;
   fetchConversations: () => Promise<void>;
   markRead: (messageId: string) => void;
@@ -99,6 +99,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         fromUserId: message.from_user,
         toUserId: message.to_user,
         content: message.content,
+        mediaUrl: message.media_url,
         createdAt: message.created_at,
         is_read: message.is_read,
         is_edited: message.is_edited,
@@ -152,7 +153,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
-  sendMessage: (toUserId: string, content: string) => {
+  sendMessage: (toUserId: string, content: string, mediaUrl?: string) => {
     const { socket, messages } = get();
     const { user } = useAuthStore.getState();
     if (socket && user) {
@@ -162,12 +163,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
         fromUserId: user.id,
         toUserId,
         content,
+        mediaUrl,
         createdAt: new Date().toISOString(),
       };
       // Optimistic update
       set({ messages: [...messages, msg] });
-      // Backend expects 'sendMessage' (camelCase) with { partnerId, content }
-      socket.emit('sendMessage', { partnerId: toUserId, content });
+      // Backend expects 'sendMessage' (camelCase) with { partnerId, content, media_url }
+      socket.emit('sendMessage', { partnerId: toUserId, content, media_url: mediaUrl });
     }
   },
 

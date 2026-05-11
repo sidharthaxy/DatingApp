@@ -6,9 +6,10 @@
  * and retries the original request exactly once. If the retry also fails, it
  * forces a logout so the user is sent back to the login screen.
  */
+import { Platform } from 'react-native';
 import { useAuthStore } from '../store/authStore';
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000';
+const API_URL = process.env.EXPO_PUBLIC_API_URL as string;
 
 type RequestOptions = RequestInit & {
   /** Skip the auto-retry logic (for auth endpoints themselves) */

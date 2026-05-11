@@ -51,7 +51,7 @@ export const initSocket = (server: HttpServer) => {
 
     // Handle sending a message
     socket.on('sendMessage', async (data) => {
-      const { partnerId, content } = data;
+      const { partnerId, content, media_url } = data;
       
       const match = await prisma.match.findFirst({
         where: {
@@ -70,7 +70,8 @@ export const initSocket = (server: HttpServer) => {
         data: {
           from_user: userId,
           to_user: partnerId,
-          content
+          content,
+          media_url
         }
       });
 
@@ -157,7 +158,7 @@ export const initSocket = (server: HttpServer) => {
 
       await prisma.message.update({
         where: { id: messageId },
-        data: { content: '', is_deleted: true }
+        data: { content: '', media_url: null, is_deleted: true }
       });
 
       socket.emit('messageDeleted', { messageId });
@@ -166,6 +167,47 @@ export const initSocket = (server: HttpServer) => {
       if (partnerSocketId) {
         io.to(partnerSocketId).emit('messageDeleted', { messageId });
       }
+    });
+
+    // ─── WebRTC Signaling ──────────────────────────────────────────────────────────
+    socket.on('call_initiated', async (data) => {
+      const { partnerId } = data;
+      const partnerSocketId = await redisClient.get(`online_users:${partnerId}`);
+      if (partnerSocketId) {
+        io.to(partnerSocketId).emit('call_incoming', { from: userId });
+      } else {
+        const sender = await prisma.user.findUnique({ where: { id: userId }, select: { first_name: true } });
+        await sendPushNotification(
+          partnerId,
+          'Incoming Video Call',
+          `${sender?.first_name || 'Someone'} is calling you.`,
+          { type: 'CALL' }
+        );
+      }
+    });
+
+    socket.on('webrtc_offer', async (data) => {
+      const { partnerId, offer } = data;
+      const partnerSocketId = await redisClient.get(`online_users:${partnerId}`);
+      if (partnerSocketId) io.to(partnerSocketId).emit('webrtc_offer', { from: userId, offer });
+    });
+
+    socket.on('webrtc_answer', async (data) => {
+      const { partnerId, answer } = data;
+      const partnerSocketId = await redisClient.get(`online_users:${partnerId}`);
+      if (partnerSocketId) io.to(partnerSocketId).emit('webrtc_answer', { from: userId, answer });
+    });
+
+    socket.on('webrtc_ice_candidate', async (data) => {
+      const { partnerId, candidate } = data;
+      const partnerSocketId = await redisClient.get(`online_users:${partnerId}`);
+      if (partnerSocketId) io.to(partnerSocketId).emit('webrtc_ice_candidate', { from: userId, candidate });
+    });
+
+    socket.on('call_ended', async (data) => {
+      const { partnerId } = data;
+      const partnerSocketId = await redisClient.get(`online_users:${partnerId}`);
+      if (partnerSocketId) io.to(partnerSocketId).emit('call_ended', { from: userId });
     });
   });
 

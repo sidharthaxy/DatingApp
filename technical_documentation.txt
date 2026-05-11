@@ -1,0 +1,106 @@
+================================================================================
+Dating App (MingleX) - Technical Documentation
+================================================================================
+
+1. PROJECT OVERVIEW
+--------------------------------------------------------------------------------
+MingleX is a modern, production-ready dating application featuring real-time 
+discovery, matching, chatting, and subscription-based premium features. The 
+system is built with a scalable micro-services-ready monolith architecture 
+supporting a React-based Admin Dashboard and an Expo (React Native) mobile app.
+
+2. TECHNOLOGY STACK
+--------------------------------------------------------------------------------
+Backend:
+- Runtime: Node.js (TypeScript)
+- Framework: Express.js
+- ORM: Prisma (PostgreSQL)
+- Security: Helmet, HPP, XSS-Clean, Rate-Limiting
+- Authentication: Firebase Admin SDK + JWT
+- Media: AWS S3 (for image storage & presigned URLs)
+- Real-time: Socket.io (for messaging & notifications)
+- Payments: Razorpay SDK
+- Documentation: Swagger (OpenAPI 3.0)
+
+Mobile:
+- Framework: Expo / React Native
+- Navigation: Expo Router
+- Styling: NativeWind (TailwindCSS for RN)
+- State Management: Zustand
+- Components: Gluestack UI
+- Auth: Firebase Client SDK
+- Payments: Razorpay Native SDK
+
+Admin Dashboard:
+- Framework: React (TypeScript)
+- Build Tool: Vite
+- Routing: React Router (implied)
+
+3. SYSTEM ARCHITECTURE
+--------------------------------------------------------------------------------
+[ Mobile App (Expo) ] <---> [ REST API (Express) ] <---> [ PostgreSQL (RDS/Local) ]
+                            [ Socket.io Server   ] <---> [ Redis (implied/ext) ]
+                            [ Firebase Admin     ]
+                            [ AWS S3 Storage     ]
+                            [ Razorpay Gateway   ]
+
+4. DATABASE SCHEMA OVERVIEW
+--------------------------------------------------------------------------------
+The database is managed via Prisma and PostgreSQL. Key entities include:
+
+- User: Core profile data, location, preferences, and subscription tier.
+- Photo: Profile media with review status (UNDER_REVIEW/APPROVED).
+- Interest: Master list of tags for user matching.
+- Swipe: Tracking likes/dislikes between users (with unique constraints).
+- Match: Created when two users like each other.
+- Message: Real-time chat history between matches.
+- Wishlist: Personal collection of profiles for future interaction.
+- Report/Appeal: Safety framework for moderating user behavior.
+- Subscription/Payment: Transaction logs and active tier management.
+
+5. API STRUCTURE & SECURITY
+--------------------------------------------------------------------------------
+Base URL: /api/v1
+Format: JSON
+
+Security Layers:
+- Rate Limiting: Global limiter (100 req/15 min) + Strict Auth/Swipe limiters.
+- Sanitization: Strip HTML tags and prevent HTTP Parameter Pollution.
+- Auth: Bearer Token (JWT) verification on protected routes.
+- Validation: Request body/param validation using Zod schemas.
+
+Key Modules:
+- /auth: Google OAuth and session management.
+- /users: Profile, interests, location, and discovery settings.
+- /discovery: Algorithm-based feed generation.
+- /chat: Real-time messaging and conversation history.
+- /media: Secure cloud storage interactions.
+- /admin: Moderation tools and analytics.
+
+6. CORE FEATURES
+--------------------------------------------------------------------------------
+- Discovery Feed: Proximity and preference-based profile matching.
+- KYC Verification: Video-based identity check for "Approved" badges.
+- Real-time Chat: Instant messaging with delivery status and media support.
+- Profile Boost: Paid feature to increase discovery visibility.
+- Safety Framework: Integrated reporting and admin moderation dashboard.
+- Subscriptions: Tiered access (Free/Premium/Elite) with Razorpay integration.
+
+7. INSTALLATION & SETUP
+--------------------------------------------------------------------------------
+Prerequisites: Node.js (v18+), PostgreSQL, Redis, Firebase Project.
+
+Steps:
+1. Root: npm run install-all (Installs all dependencies for Admin, Backend, Mobile).
+2. Backend:
+   - Configure .env (DATABASE_URL, FIREBASE_CREDENTIALS, AWS_KEYS, RAZORPAY_KEY).
+   - Run: npm run db:push && npm run db:generate.
+   - Start: npm run dev.
+3. Mobile:
+   - Start: npx expo start.
+4. Admin:
+   - Start: npm run dev.
+
+================================================================================
+Generated on: 2026-05-04
+================================================================================

@@ -92,62 +92,70 @@ enum PaymentStatus {
 }
 
 model User {
-  id                String    @id @default(uuid())
-  firebase_uid      String?   @unique
-  email             String?   @unique
-  phone             String?   @unique
-  first_name        String?
-  dob               DateTime?
-  gender            Gender?
-  bio               String?   @db.Text
-  city              String?
-  latitude          Float?
-  longitude         Float?
-  height_cm         Int?
-  job_title         String?
-  company           String?
-  living_in         String?
-  relationship_goal RelationshipGoal?
-  interested_in     InterestedIn?
-  discover_enabled    Boolean   @default(true)
-  is_profile_complete Boolean   @default(false)
+  id                  String            @id @default(uuid())
+  firebase_uid        String?           @unique
+  email               String?           @unique
+  phone               String?           @unique
+  first_name          String?
+  dob                 DateTime?
+  gender              Gender?
+  bio                 String?           @db.Text
+  city                String?
+  latitude            Float?
+  longitude           Float?
+  height_cm           Int?
+  job_title           String?
+  company             String?
+  living_in           String?
+  relationship_goal   RelationshipGoal?
+  interested_in       InterestedIn?
+  discover_enabled    Boolean           @default(true)
+  is_profile_complete Boolean           @default(false)
   last_login_at       DateTime?
-  status              Status    @default(UNDER_REVIEW)
-  kyc_video_url     String?
-  fcm_token         String?
-  boost_expires_at  DateTime?
-  profile_views     Int       @default(0)
-  report_count      Int       @default(0)
+  status              Status            @default(UNDER_REVIEW)
+  kyc_video_url       String?
+  fcm_token           String?
+  boost_expires_at    DateTime?
+  profile_views       Int               @default(0)
+  report_count        Int               @default(0)
 
-  created_at        DateTime  @default(now())
-  updated_at        DateTime  @updatedAt
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 
-  photos            Photo[]
-  user_interests    UserInterest[]
-  swipes_from       Swipe[]   @relation("SwipesFrom")
-  swipes_to         Swipe[]   @relation("SwipesTo")
-  messages_from     Message[] @relation("MessagesFrom")
-  messages_to       Message[] @relation("MessagesTo")
-  admin_actions     AdminAction[]
-  matches_1         Match[]   @relation("Matches1")
-  matches_2         Match[]   @relation("Matches2")
+  photos             Photo[]
+  user_interests     UserInterest[]
+  emergency_contacts EmergencyContact[]
+  swipes_from        Swipe[]            @relation("SwipesFrom")
+  swipes_to          Swipe[]            @relation("SwipesTo")
+  messages_from      Message[]          @relation("MessagesFrom")
+  messages_to        Message[]          @relation("MessagesTo")
+  admin_actions      AdminAction[]
+  matches_1          Match[]            @relation("Matches1")
+  matches_2          Match[]            @relation("Matches2")
 
-  favorites_given   Favorite[] @relation("FavoritesUser")
-  favorites_received Favorite[] @relation("FavoritesTarget")
-  wishlists         Wishlist[]
-  wishlisted_in     WishlistMember[] @relation("WishlistedUsers")
-  reports_given     Report[]  @relation("ReportsGiven")
-  reports_received  Report[]  @relation("ReportsReceived")
-  appeals           Appeal[]
-  subscriptions     Subscription[]
-  payments          Payment[]
+  favorites_given    Favorite[]       @relation("FavoritesUser")
+  favorites_received Favorite[]       @relation("FavoritesTarget")
+  wishlists          Wishlist[]
+  wishlisted_in      WishlistMember[] @relation("WishlistedUsers")
+  reports_given      Report[]         @relation("ReportsGiven")
+  reports_received   Report[]         @relation("ReportsReceived")
+  appeals            Appeal[]
+  subscriptions      Subscription[]
+  payments           Payment[]
+
+  stories           Story[]
+  story_views       StoryView[]
+  story_reactions   StoryReaction[]
+  profile_prompts   ProfilePrompt[]
+  activities_caused Activity[]      @relation("ActivityActor")
+  activities_target Activity[]      @relation("ActivityTarget")
+
+  subscription_tier SubscriptionTier @default(FREE)
 
   @@index([created_at])
   @@index([last_login_at])
   @@index([status])
   @@index([discover_enabled])
-
-  subscription_tier SubscriptionTier @default(FREE)
 }
 
 model Photo {
@@ -216,7 +224,7 @@ model AdminAction {
   remark     String?         @db.Text
   created_at DateTime        @default(now())
 
-  user       User @relation(fields: [user_id], references: [id])
+  user User @relation(fields: [user_id], references: [id])
 }
 
 model Match {
@@ -252,8 +260,8 @@ model Wishlist {
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  user       User             @relation(fields: [user_id], references: [id])
-  members    WishlistMember[]
+  user    User             @relation(fields: [user_id], references: [id])
+  members WishlistMember[]
 }
 
 model WishlistMember {
@@ -295,16 +303,16 @@ model Appeal {
 }
 
 model Subscription {
-  id                      String             @id @default(uuid())
-  user_id                 String
-  tier                    SubscriptionTier
-  billing_cycle           BillingCycle
-  status                  SubscriptionStatus @default(ACTIVE)
-  razorpay_subscription_id String?           @unique
-  starts_at               DateTime           @default(now())
-  expires_at              DateTime
-  created_at              DateTime           @default(now())
-  updated_at              DateTime           @updatedAt
+  id                       String             @id @default(uuid())
+  user_id                  String
+  tier                     SubscriptionTier
+  billing_cycle            BillingCycle
+  status                   SubscriptionStatus @default(ACTIVE)
+  razorpay_subscription_id String?            @unique
+  starts_at                DateTime           @default(now())
+  expires_at               DateTime
+  created_at               DateTime           @default(now())
+  updated_at               DateTime           @updatedAt
 
   user User @relation(fields: [user_id], references: [id])
 
@@ -312,21 +320,119 @@ model Subscription {
 }
 
 model Payment {
-  id                  String        @id @default(uuid())
+  id                  String           @id @default(uuid())
   user_id             String
   subscription_id     String?
-  razorpay_order_id   String?       @unique
-  razorpay_payment_id String?       @unique
+  razorpay_order_id   String?          @unique
+  razorpay_payment_id String?          @unique
   razorpay_signature  String?
-  amount              Int           // in paise (INR smallest unit)
-  currency            String        @default("INR")
-  status              PaymentStatus @default(CREATED)
+  amount              Int // in paise (INR smallest unit)
+  currency            String           @default("INR")
+  status              PaymentStatus    @default(CREATED)
   tier                SubscriptionTier
   billing_cycle       BillingCycle
-  created_at          DateTime      @default(now())
-  updated_at          DateTime      @updatedAt
+  created_at          DateTime         @default(now())
+  updated_at          DateTime         @updatedAt
 
   user User @relation(fields: [user_id], references: [id])
 
   @@index([user_id])
+}
+
+model EmergencyContact {
+  id         String   @id @default(uuid())
+  user_id    String
+  name       String
+  phone      String
+  relation   String?
+  created_at DateTime @default(now())
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  ADMIN
+  MODERATOR
+}
+
+model AdminUser {
+  id                    String    @id @default(uuid())
+  email                 String    @unique
+  password_hash         String
+  role                  AdminRole @default(ADMIN)
+  force_password_change Boolean   @default(true)
+  is_active             Boolean   @default(true)
+  created_at            DateTime  @default(now())
+  updated_at            DateTime  @updatedAt
+}
+
+// ─── Social & Engagement Models ───────────────────────────────────────────────
+
+model Story {
+  id         String   @id @default(uuid())
+  user_id    String
+  media_url  String
+  type       String   @default("IMAGE") // IMAGE, VIDEO
+  expires_at DateTime
+  created_at DateTime @default(now())
+
+  user      User            @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  views     StoryView[]
+  reactions StoryReaction[]
+
+  @@index([user_id])
+  @@index([expires_at])
+}
+
+model StoryView {
+  id         String   @id @default(uuid())
+  story_id   String
+  viewer_id  String
+  created_at DateTime @default(now())
+
+  story  Story @relation(fields: [story_id], references: [id], onDelete: Cascade)
+  viewer User  @relation(fields: [viewer_id], references: [id], onDelete: Cascade)
+
+  @@unique([story_id, viewer_id])
+}
+
+model StoryReaction {
+  id         String   @id @default(uuid())
+  story_id   String
+  reactor_id String
+  reaction   String // e.g., 'heart', 'fire'
+  created_at DateTime @default(now())
+
+  story   Story @relation(fields: [story_id], references: [id], onDelete: Cascade)
+  reactor User  @relation(fields: [reactor_id], references: [id], onDelete: Cascade)
+}
+
+model ProfilePrompt {
+  id         String   @id @default(uuid())
+  user_id    String
+  question   String
+  answer     String
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+}
+
+model Activity {
+  id         String   @id @default(uuid())
+  actor_id   String
+  target_id  String?
+  type       String // e.g., 'NEW_STORY', 'NEW_PHOTO', 'MATCHED'
+  created_at DateTime @default(now())
+
+  actor  User  @relation("ActivityActor", fields: [actor_id], references: [id], onDelete: Cascade)
+  target User? @relation("ActivityTarget", fields: [target_id], references: [id], onDelete: Cascade)
+
+  @@index([actor_id])
+  @@index([created_at])
 }

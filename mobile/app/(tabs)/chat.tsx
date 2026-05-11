@@ -6,14 +6,15 @@ import { VStack } from '@/components/ui/vstack';
 import { HStack } from '@/components/ui/hstack';
 import { Heading } from '@/components/ui/heading';
 import { Image } from '@/components/ui/image';
-import { Search } from 'lucide-react-native';
+import { Search, Plus, Play } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useChatStore } from '@/src/store/chatStore';
 import { useAuthStore } from '@/src/store/authStore';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { apiGet } from '@/src/lib/api';
 
 const PLACEHOLDER_IMAGE = 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=200';
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000';
+const API_URL = process.env.EXPO_PUBLIC_API_URL as string;
 
 function getPartnerImage(partner: any): string {
   const raw = partner.photos?.[0]?.url;
@@ -38,11 +39,26 @@ export default function ChatScreen() {
   const { conversations, fetchConversations, activeUsers, isConnected, connectSocket } = useChatStore();
   const user = useAuthStore((s) => s.user);
 
+  const [stories, setStories] = React.useState<any[]>([]);
+
   useEffect(() => {
     // Ensure socket is connected (with auth token) when user enters chat tab
     connectSocket();
     fetchConversations();
+    fetchStories();
   }, []);
+
+  const fetchStories = async () => {
+    try {
+      const res = await apiGet('/api/v1/social/stories');
+      const data = await res.json();
+      if (data.success) {
+        setStories(data.data.stories);
+      }
+    } catch (err) {
+      console.error('Failed to fetch stories:', err);
+    }
+  };
 
   // Separate: conversations with messages (Recent Chats) vs no messages yet (New Matches)
   const newMatches = conversations.filter((c) => !c.lastMessage);
@@ -77,6 +93,38 @@ export default function ChatScreen() {
               </TouchableOpacity>
             </HStack>
           </HStack>
+
+          {/* Stories Section */}
+          <VStack space="md" className="mb-6 mt-2">
+            <Text className="px-6 font-label text-[10px] uppercase tracking-[0.2em] text-on-surface-variant font-bold">
+              Stories
+            </Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingLeft: 24, paddingRight: 12 }}>
+              <HStack space="lg">
+                {/* Add Story Button */}
+                <TouchableOpacity className="items-center">
+                  <View className="w-16 h-16 rounded-full border border-dashed border-primary items-center justify-center mb-1">
+                    <Plus size={24} color="#414BEA" />
+                  </View>
+                  <Text className="font-label text-[10px] text-on-surface-variant">Add Story</Text>
+                </TouchableOpacity>
+
+                {/* Render Fetched Stories */}
+                {stories.map(story => (
+                  <TouchableOpacity key={story.id} className="items-center" onPress={() => {}}>
+                    <View className="w-16 h-16 rounded-full p-[2px] bg-gradient-to-tr from-primary to-purple-500 mb-1">
+                      <Image 
+                        source={{ uri: story.user?.photos?.[0]?.url?.startsWith('http') ? story.user.photos[0].url : `${API_URL}/${story.user?.photos?.[0]?.url}` || PLACEHOLDER_IMAGE }}
+                        className="w-full h-full rounded-full border-2 border-surface"
+                        alt="Story"
+                      />
+                    </View>
+                    <Text className="font-label text-[10px] text-on-surface font-bold">{story.user?.first_name || 'User'}</Text>
+                  </TouchableOpacity>
+                ))}
+              </HStack>
+            </ScrollView>
+          </VStack>
 
           {conversations.length === 0 ? (
             <Box className="flex-1 items-center justify-center py-24">

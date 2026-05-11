@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ScrollView, TouchableOpacity, View, ActivityIndicator, Image as RNImage } from 'react-native';
+import { ScrollView, TouchableOpacity, View, ActivityIndicator, Image as RNImage, Platform } from 'react-native';
 import { Box } from '@/components/ui/box';
 import { Text } from '@/components/ui/text';
 import { Heading } from '@/components/ui/heading';
@@ -12,16 +12,18 @@ import { useAuthStore } from '@/src/store/authStore';
 import { apiFetch, apiPut, apiPost, apiGet } from '@/src/lib/api';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
-import { ChevronRight, ChevronLeft, MapPin, Heart, Sparkles, User as UserIcon, Camera, Plus, Check } from 'lucide-react-native';
+import { ChevronRight, ChevronLeft, MapPin, Heart, Sparkles, User as UserIcon, Camera, Plus, Check, Calendar } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000';
+const API_URL = process.env.EXPO_PUBLIC_API_URL as string;
 
 export default function OnboardingScreen() {
   const router = useRouter();
   const { user, setUser, token } = useAuthStore();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
   
   // Step 1: Profile
   const [formData, setFormData] = useState({
@@ -50,6 +52,10 @@ export default function OnboardingScreen() {
   // Step 5: Photo
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [photoLoading, setPhotoLoading] = useState(false);
+  
+  // Custom Interest
+  const [customInterest, setCustomInterest] = useState('');
+  const [isAddingCustom, setIsAddingCustom] = useState(false);
 
   useEffect(() => {
     if (step === 4) {
@@ -78,6 +84,10 @@ export default function OnboardingScreen() {
     } else {
       await finalizeOnboarding();
     }
+  };
+
+  const handleSkipInterests = () => {
+    setStep(5);
   };
 
   const handleBack = () => {
@@ -119,18 +129,23 @@ export default function OnboardingScreen() {
       // 5. Photo Upload (if selected)
       if (photoUri) {
          const photoData = new FormData();
-         // @ts-ignore
-         photoData.append('photo', {
-            uri: photoUri,
-            name: 'profile_photo.jpg',
-            type: 'image/jpeg',
-         });
+         if (Platform.OS === 'web') {
+           const response = await fetch(photoUri);
+           const blob = await response.blob();
+           photoData.append('photo', blob, 'profile_photo.jpg');
+         } else {
+           // @ts-ignore
+           photoData.append('photo', {
+             uri: photoUri,
+             name: 'profile_photo.jpg',
+             type: 'image/jpeg',
+           });
+         }
 
          const uploadRes = await fetch(`${API_URL}/api/v1/media/upload`, {
             method: 'POST',
             headers: {
                'Authorization': `Bearer ${token}`,
-               'Content-Type': 'multipart/form-data',
             },
             body: photoData,
          });
@@ -202,6 +217,31 @@ export default function OnboardingScreen() {
     }
   };
 
+  const addCustomInterest = async () => {
+    if (!customInterest.trim()) return;
+    setIsAddingCustom(true);
+    try {
+      // In a real app, we'd call an API to create this interest
+      // For now, we'll simulate it by adding it to the local list if it doesn't exist
+      // and checking if we can find a match or create a placeholder.
+      // Since we need an ID, let's assume the backend has an endpoint for this.
+      const res = await apiPost('/api/v1/users/interests/custom', { name: customInterest });
+      const data = await res.json();
+      if (data.success) {
+        setAllInterests([...allInterests, data.data]);
+        setSelectedInterests([...selectedInterests, data.data.id]);
+        setCustomInterest('');
+      } else {
+        alert(data.error?.message || 'Failed to add interest');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Could not add custom interest');
+    } finally {
+      setIsAddingCustom(false);
+    }
+  };
+
   const renderStep = () => {
     switch(step) {
       case 1:
@@ -226,15 +266,50 @@ export default function OnboardingScreen() {
               </VStack>
 
               <VStack space="xs">
-                <Text className="text-xs font-bold uppercase tracking-widest text-primary ml-1">Birthday (YYYY-MM-DD)</Text>
-                <Input variant="outline" size="lg" className="rounded-xl bg-white border-surface-container-high">
-                  <InputField 
-                    placeholder="1995-05-20" 
-                    className="font-body" 
-                    value={formData.dob}
-                    onChangeText={(t) => setFormData({...formData, dob: t})}
-                  />
-                </Input>
+                <Text className="text-xs font-bold uppercase tracking-widest text-on-surface-variant ml-1">Date of Birth</Text>
+                {Platform.OS === 'web' ? (
+                  <Box className="w-full h-14 bg-surface-container-low rounded-2xl border border-outline-variant/10 px-4 justify-center">
+                    <input 
+                      type="date" 
+                      value={formData.dob} 
+                      onChange={(e) => setFormData({...formData, dob: e.target.value})}
+                      style={{ 
+                        background: 'transparent', 
+                        border: 'none', 
+                        color: '#1A1C1E', 
+                        width: '100%', 
+                        outline: 'none',
+                        fontFamily: 'Inter'
+                      }} 
+                    />
+                  </Box>
+                ) : (
+                  <>
+                    <TouchableOpacity 
+                      onPress={() => setShowDatePicker(true)}
+                      className="w-full h-14 bg-surface-container-low rounded-2xl border border-outline-variant/10 px-4 flex-row items-center justify-between"
+                    >
+                      <Text className={formData.dob ? "text-on-surface font-body" : "text-on-surface-variant/40 font-body"}>
+                        {formData.dob || 'Select Date'}
+                      </Text>
+                      <Calendar size={20} color="#414BEA" />
+                    </TouchableOpacity>
+                    {showDatePicker && (
+                      <DateTimePicker
+                        value={formData.dob ? new Date(formData.dob) : new Date(2000, 0, 1)}
+                        mode="date"
+                        display="default"
+                        maximumDate={new Date()}
+                        onChange={(event, selectedDate) => {
+                          setShowDatePicker(false);
+                          if (selectedDate) {
+                            setFormData({...formData, dob: selectedDate.toISOString().split('T')[0]});
+                          }
+                        }}
+                      />
+                    )}
+                  </>
+                )}
               </VStack>
 
               <VStack space="xs">
@@ -362,17 +437,40 @@ export default function OnboardingScreen() {
               </Box>
             ) : (
               <ScrollView showsVerticalScrollIndicator={false} className="flex-1">
-                 <HStack space="sm" className="flex-wrap pb-10">
-                    {allInterests.map((interest) => (
-                      <TouchableOpacity 
-                        key={interest.id} 
-                        onPress={() => toggleInterest(interest.id)}
-                        className={`px-4 py-2 rounded-full border mb-2 ${selectedInterests.includes(interest.id) ? 'bg-primary border-primary' : 'bg-white border-surface-container-high'}`}
-                      >
-                        <Text className={`text-sm font-medium ${selectedInterests.includes(interest.id) ? 'text-white' : 'text-on-surface'}`}>#{interest.name}</Text>
-                      </TouchableOpacity>
-                    ))}
-                 </HStack>
+                 <VStack space="lg" className="pb-10">
+                   <HStack space="sm" className="flex-wrap">
+                      {allInterests.map((interest) => (
+                        <TouchableOpacity 
+                          key={interest.id} 
+                          onPress={() => toggleInterest(interest.id)}
+                          className={`px-4 py-2 rounded-full border mb-2 ${selectedInterests.includes(interest.id) ? 'bg-primary border-primary' : 'bg-white border-surface-container-high'}`}
+                        >
+                          <Text className={`text-sm font-medium ${selectedInterests.includes(interest.id) ? 'text-white' : 'text-on-surface'}`}>#{interest.name}</Text>
+                        </TouchableOpacity>
+                      ))}
+                   </HStack>
+
+                   <VStack space="sm" className="mt-4 p-4 bg-surface-container-lowest rounded-2xl border border-outline-variant/10 shadow-sm">
+                      <Text className="text-xs font-bold uppercase tracking-widest text-on-surface-variant ml-1">Other Interest</Text>
+                      <HStack space="sm">
+                        <Input variant="outline" size="md" className="flex-1 rounded-xl bg-white border-surface-container-high">
+                          <InputField 
+                            placeholder="Type something..." 
+                            className="font-body" 
+                            value={customInterest}
+                            onChangeText={setCustomInterest}
+                          />
+                        </Input>
+                        <TouchableOpacity 
+                          onPress={addCustomInterest}
+                          disabled={isAddingCustom || !customInterest.trim()}
+                          className={`w-12 h-12 rounded-xl items-center justify-center ${(!customInterest.trim() || isAddingCustom) ? 'bg-surface-container-high' : 'bg-primary'}`}
+                        >
+                          {isAddingCustom ? <ActivityIndicator size="small" color="white" /> : <Plus size={20} color="white" />}
+                        </TouchableOpacity>
+                      </HStack>
+                   </VStack>
+                 </VStack>
               </ScrollView>
             )}
           </VStack>
@@ -428,6 +526,16 @@ export default function OnboardingScreen() {
               className="w-14 h-14 rounded-2xl bg-surface-container-low items-center justify-center"
              >
                <ChevronLeft size={24} color="#2f2f2e" />
+             </TouchableOpacity>
+           )}
+
+           {step === 4 && (
+             <TouchableOpacity 
+              onPress={handleSkipInterests}
+              disabled={loading}
+              className="px-6 h-14 rounded-2xl bg-surface-container-low items-center justify-center mr-2"
+             >
+               <Text className="text-on-surface-variant font-bold">Skip</Text>
              </TouchableOpacity>
            )}
            

@@ -16,11 +16,12 @@ import Animated, {
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   Menu, SlidersHorizontal, X, Star, Heart, MapPin, Bolt,
-  Check, ChevronDown, ChevronUp, BookmarkPlus
+  Check, ChevronDown, ChevronUp, BookmarkPlus, Sparkles
 } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/src/store/authStore';
 import { apiGet, apiPost } from '@/src/lib/api';
+import { useRouter, type Href } from 'expo-router';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface DiscoveredUser {
@@ -44,7 +45,7 @@ interface Filters {
   recently_active: boolean;
 }
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000';
+const API_URL = process.env.EXPO_PUBLIC_API_URL as string;
 
 // ─── User Card ────────────────────────────────────────────────────────────────
 const UserCard = ({ user, isDesktop = false, onFavorite, isFavorited }: { user: DiscoveredUser; isDesktop?: boolean; onFavorite?: () => void; isFavorited?: boolean }) => (
@@ -75,13 +76,18 @@ const UserCard = ({ user, isDesktop = false, onFavorite, isFavorited }: { user: 
     )}
     <VStack className="absolute bottom-0 left-0 right-0 p-6 z-20">
       <VStack space="xs">
-        <HStack className="items-baseline space-x-3">
+        <HStack className="items-center space-x-2 flex-wrap">
           <Heading className={`font-headline ${isDesktop ? 'text-xl' : 'text-3xl'} font-bold text-white tracking-tight`}>
             {user.name}, {user.age}
           </Heading>
-          <View className="bg-primary/20 bg-opacity-70 px-2 py-0.5 rounded border border-white/20">
-            <Text className="font-label text-[10px] text-white uppercase tracking-tighter">Verified</Text>
+          <View className="bg-primary/40 px-2 py-0.5 rounded border border-white/20 mt-1">
+            <Text className="font-label text-[10px] text-white uppercase tracking-tighter">KYC Verified</Text>
           </View>
+          {user.active && (
+            <View className="bg-[#4CAF50]/40 px-2 py-0.5 rounded border border-white/20 mt-1">
+              <Text className="font-label text-[10px] text-white uppercase tracking-tighter">Active Dater</Text>
+            </View>
+          )}
         </HStack>
         <HStack className="items-center space-x-3">
           <MapPin size={12} color="white" />
@@ -251,6 +257,7 @@ export default function DiscoveryScreen() {
   const { width } = useWindowDimensions();
   const isDesktop = width > 768;
   const maxWidth = 1200;
+  const router = useRouter();
 
   const [users, setUsers] = useState<DiscoveredUser[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -399,21 +406,31 @@ export default function DiscoveryScreen() {
             <TouchableOpacity>
               <Menu size={24} color="#2f2f2e" />
             </TouchableOpacity>
-            <Text className="font-headline uppercase tracking-widest text-sm text-primary font-bold">
-              Discovery
-            </Text>
-            <TouchableOpacity
-              onPress={() => setFilterVisible(true)}
-              className={`relative ${hasActiveFilters ? 'opacity-100' : 'opacity-80'}`}
-            >
-              <SlidersHorizontal size={24} color={hasActiveFilters ? '#414BEA' : '#2f2f2e'} />
-              {hasActiveFilters && (
-                <View style={{
-                  position: 'absolute', top: -4, right: -4,
-                  width: 10, height: 10, borderRadius: 5, backgroundColor: '#414BEA'
-                }} />
-              )}
-            </TouchableOpacity>
+            <HStack className="items-center space-x-3">
+              <Text className="font-headline uppercase tracking-widest text-sm text-primary font-bold">
+                Discovery
+              </Text>
+            </HStack>
+            <HStack className="items-center space-x-3">
+              <TouchableOpacity
+                onPress={() => router.push('/recommendations' as Href)}
+                style={{ padding: 4 }}
+              >
+                <Sparkles size={22} color="#414BEA" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setFilterVisible(true)}
+                className={`relative ${hasActiveFilters ? 'opacity-100' : 'opacity-80'}`}
+              >
+                <SlidersHorizontal size={24} color={hasActiveFilters ? '#414BEA' : '#2f2f2e'} />
+                {hasActiveFilters && (
+                  <View style={{
+                    position: 'absolute', top: -4, right: -4,
+                    width: 10, height: 10, borderRadius: 5, backgroundColor: '#414BEA'
+                  }} />
+                )}
+              </TouchableOpacity>
+            </HStack>
           </HStack>
         </SafeAreaView>
 

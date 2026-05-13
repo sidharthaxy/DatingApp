@@ -131,21 +131,6 @@ erDiagram
     USER ||--o{ SUBSCRIPTION : owns
 ```
 
----
-
-## 🚀 Future Roadmap (Phase 2)
-
-### 📈 Scaling & Optimization
-- **Global Stress Testing:** Implementing K6 scripts to simulate 10k+ concurrent WebSocket connections.
-- **Database Partitioning:** Horizontal scaling for the `Messages` and `Swipes` tables.
-
-### 🎨 UI/UX Enhancements
-- **Glassmorphic Redesign:** Implementing a premium, translucent design language across the mobile app.
-- **Micro-Animations:** Integrating Lottie and Reanimated for high-engagement interactions.
-
-### 🤖 Advanced AI
-- **Semantic Matchmaking:** Using Vector Embeddings (PGVector) to match users based on interest descriptions.
-- **Automated Moderation:** AI-based image scanning for inappropriate content using AWS Rekognition.
 
 ---
 
@@ -170,7 +155,3 @@ erDiagram
    - **Mobile:** `cd mobile && npx expo start`
    - **Admin:** `cd admin && npm run dev`
 
----
-
-## 📄 License
-Copyright © 2024 MingleX. All rights reserved. Professional implementation by **[Your Name/Team]**.

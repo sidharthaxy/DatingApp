@@ -11,5 +11,10 @@ logs/
 dist/
 build/
 
+
 # Expo / React Native
 .expo/
+
+# Design assets
+design/
+

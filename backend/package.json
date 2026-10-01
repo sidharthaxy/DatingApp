@@ -12,6 +12,7 @@
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
     "db:seed": "ts-node --transpile-only src/scripts/seedInterests.ts",
+    "admin:reset": "ts-node --transpile-only src/scripts/resetAdmin.ts",
     "storage:init": "ts-node --transpile-only src/scripts/initMinio.ts",
     "test": "dotenv -e .env.test -- npx prisma db push --accept-data-loss && dotenv -e .env.test -- jest --runInBand",
     "test:watch": "dotenv -e .env.test -- jest --watch --runInBand"

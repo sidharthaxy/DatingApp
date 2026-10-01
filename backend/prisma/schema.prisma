@@ -36,6 +36,7 @@ enum InterestedIn {
 enum SwipeType {
   LIKE
   DISLIKE
+  SUPER_LIKE
 }
 
 enum AdminActionType {

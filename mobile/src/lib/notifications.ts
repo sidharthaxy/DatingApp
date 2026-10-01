@@ -2,7 +2,7 @@
  * notifications.ts
  * 
  * Registers the device for push notifications and sends the FCM token
- * to the backend via PUT /users/me/fcm-token.
+ * to the backend via POST /users/fcm-token.
  *
  * Currently implemented using expo-notifications (if available).
  * The `registerForPushNotifications` function is safe to call even if
@@ -15,7 +15,7 @@
  */
 
 import { Platform } from 'react-native';
-import { apiPut } from './api';
+import { apiPost } from './api';
 
 import * as Notifications from 'expo-notifications';
 
@@ -56,26 +56,28 @@ export const registerForPushNotifications = async (): Promise<void> => {
       return;
     }
 
-    // Get the Expo Push Token (wraps FCM/APNs token)
-    const tokenData = await Notifications.getExpoPushTokenAsync();
-    const expoPushToken = tokenData.data;
+    // The backend pushes through Firebase Admin, which needs the NATIVE device token (an FCM
+    // registration token on Android) — not an "ExponentPushToken[...]", which only Expo's
+    // own push service understands.
+    const tokenData = await Notifications.getDevicePushTokenAsync();
+    const deviceToken = typeof tokenData?.data === 'string' ? tokenData.data : null;
 
-    if (!expoPushToken) {
+    if (!deviceToken) {
       console.log('[FCM] Could not obtain push token.');
       return;
     }
 
     // Send to backend
-    const res = await apiPut('/api/v1/users/me/fcm-token', { fcmToken: expoPushToken });
+    const res = await apiPost('/api/v1/users/fcm-token', { fcm_token: deviceToken });
     const json = await res.json();
 
     if (json.success) {
-      console.log('[FCM] Push token registered successfully:', expoPushToken);
+      console.log('[FCM] Push token registered successfully');
     } else {
       console.warn('[FCM] Backend rejected FCM token:', json.error);
     }
   } catch (err) {
     // Non-blocking — a failure here should never crash the app
-    console.error('[FCM] Failed to register push token:', err);
+    console.warn('[FCM] Push token not registered:', err);
   }
 };

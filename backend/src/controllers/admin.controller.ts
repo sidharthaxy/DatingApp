@@ -2,6 +2,7 @@ import { Response, Request } from 'express';
 import { PrismaClient, Status, AdminActionType } from '@prisma/client';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
 import { sendPushNotification } from '../services/notification.service';
+import { signReadUrl } from '../config/storage';
 
 export enum RejectionReason {
   INAPPROPRIATE_PHOTO = 'INAPPROPRIATE_PHOTO',
@@ -12,6 +13,26 @@ export enum RejectionReason {
 }
 
 const prisma = new PrismaClient();
+
+/**
+ * KYC videos live in a private part of the bucket, so reviewers get a short-lived signed URL.
+ * Older rows may hold a full URL instead of a storage key — those are passed through as-is.
+ */
+const withKycViewUrl = async <T extends { kyc_video_url: string | null }>(user: T) => {
+  let kyc_video_view_url: string | null = null;
+  if (user.kyc_video_url) {
+    if (/^https?:\/\//.test(user.kyc_video_url)) {
+      kyc_video_view_url = user.kyc_video_url;
+    } else {
+      try {
+        kyc_video_view_url = await signReadUrl(user.kyc_video_url, 15 * 60);
+      } catch {
+        kyc_video_view_url = null;
+      }
+    }
+  }
+  return { ...user, kyc_video_view_url };
+};
 
 // Middleware to check if user is admin would ideally go here.
 // For now, we assume standard auth wraps this and role checks are mocked.
@@ -36,8 +57,9 @@ export const getUsers = async (req: Request, res: Response) => {
     });
 
     const total = await prisma.user.count({ where: whereClause });
+    const usersWithKyc = await Promise.all(users.map(withKycViewUrl));
 
-    return res.status(200).json({ success: true, data: { users, meta: { total, page, limit } } });
+    return res.status(200).json({ success: true, data: { users: usersWithKyc, meta: { total, page, limit } } });
   } catch (error: any) {
     return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: error.message } });
   }
@@ -59,7 +81,7 @@ export const getUserDetails = async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, error: { code: 'USER_NOT_FOUND', message: 'User not found' }});
     }
 
-    return res.status(200).json({ success: true, data: { user } });
+    return res.status(200).json({ success: true, data: { user: await withKycViewUrl(user) } });
   } catch (error: any) {
     return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: error.message } });
   }

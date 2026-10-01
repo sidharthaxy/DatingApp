@@ -31,7 +31,7 @@ import {
   Rewind,
   MessageSquare,
 } from 'lucide-react-native';
-import RazorpayCheckout from 'react-native-razorpay';
+import { openRazorpayCheckout, PaymentCancelled } from '@/src/lib/razorpay';
 
 // --- Data ---
 
@@ -376,7 +376,7 @@ export default function SubscriptionScreen() {
       };
 
       try {
-        const data = await RazorpayCheckout.open(options);
+        const data = await openRazorpayCheckout(options);
         // Handle success
         const verifyRes = await apiPost('/api/v1/subscriptions/verify-payment', {
           razorpay_order_id: data.razorpay_order_id,
@@ -393,10 +393,10 @@ export default function SubscriptionScreen() {
         }
       } catch (error: any) {
         // User cancelled or payment failed
-        if (error.code === 2) {
+        if (error instanceof PaymentCancelled) {
           console.log('[Razorpay] Payment cancelled');
         } else {
-          Alert.alert('Payment Error', error.description || 'An error occurred during payment.');
+          Alert.alert('Payment Error', error?.message || 'An error occurred during payment.');
         }
       }
     } catch (e: any) {

@@ -10,8 +10,7 @@ import { ArrowLeft, Heart, Briefcase } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { apiGet, apiPost } from '@/src/lib/api';
-
-const API_URL = process.env.EXPO_PUBLIC_API_URL as string;
+import { mediaUrl } from '@/src/lib/config';
 
 interface FavoriteUser {
   id: string;
@@ -25,9 +24,7 @@ interface FavoriteUser {
 }
 
 function getPhoto(photos: { url: string }[]): string {
-  const raw = photos?.[0]?.url;
-  if (!raw) return 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=400';
-  return raw.startsWith('http') ? raw : `${API_URL}/${raw}`;
+  return mediaUrl(photos?.[0]?.url);
 }
 
 export default function FavoritesScreen() {

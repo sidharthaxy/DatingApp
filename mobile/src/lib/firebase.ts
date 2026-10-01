@@ -2,16 +2,14 @@ import { Platform } from 'react-native';
 
 // ── Web SDK (Modular v9+) ────────────────────────────────────────────────────
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { 
-  getAuth, 
-  connectAuthEmulator, 
-  GoogleAuthProvider, 
+import {
+  getAuth,
+  connectAuthEmulator,
+  GoogleAuthProvider,
   signInWithPopup,
   signInWithCredential
 } from 'firebase/auth';
-
-// ── Native SDK (React Native Firebase) ────────────────────────────────────────
-import nativeAuth from '@react-native-firebase/auth';
+import { EMULATOR_URL, USE_EMULATOR } from './config';
 
 const firebaseConfig = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
@@ -23,36 +21,53 @@ const firebaseConfig = {
   measurementId: process.env.EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
-let auth: any;
+// ── Native SDK (React Native Firebase) ────────────────────────────────────────
+// Loaded lazily and defensively: the native module only exists in a custom dev build.
+// Importing it at the top level crashed the whole app on launch in Expo Go, even though
+// emulator sign-in (plain REST) never needs it.
+let nativeAuthModule: any | null | undefined;
+
+/** `@react-native-firebase/auth`, or null when the native module isn't in this build. */
+export const getNativeAuth = (): any | null => {
+  if (Platform.OS === 'web') return null;
+  if (nativeAuthModule === undefined) {
+    try {
+      const mod = require('@react-native-firebase/auth');
+      const nativeAuth = mod.default ?? mod;
+      nativeAuth(); // throws if the native side is missing
+      if (USE_EMULATOR) {
+        try {
+          nativeAuth().useEmulator(EMULATOR_URL);
+        } catch {
+          // Already connected
+        }
+      }
+      nativeAuthModule = nativeAuth;
+    } catch {
+      nativeAuthModule = null;
+    }
+  }
+  return nativeAuthModule;
+};
+
+let auth: any = null;
 
 if (Platform.OS === 'web') {
   const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
   auth = getAuth(app);
-  
-  if (process.env.EXPO_PUBLIC_USE_EMULATOR === 'true') {
-    // On Web, always use localhost to avoid CORS/Iframe security issues with IP addresses
-    const emulatorUrl = process.env.EXPO_PUBLIC_EMULATOR_URL as string;
-      
-    connectAuthEmulator(auth, emulatorUrl, { disableWarnings: true });
-  }
-} else {
-  // On Native, we use the namespaced-like but safer getter from RN Firebase
-  // Using nativeAuth() is the standard way for v12+
-  auth = nativeAuth;
-  
-  if (process.env.EXPO_PUBLIC_USE_EMULATOR === 'true') {
-    const emulatorUrl = process.env.EXPO_PUBLIC_EMULATOR_URL as string;
+
+  if (USE_EMULATOR) {
     try {
-      auth().useEmulator(emulatorUrl);
-    } catch (e) {
-      // Already connected
+      connectAuthEmulator(auth, EMULATOR_URL, { disableWarnings: true });
+    } catch {
+      // Already connected (fast refresh)
     }
   }
 }
 
-export { 
-  auth, 
-  GoogleAuthProvider, 
-  signInWithPopup, 
-  signInWithCredential 
+export {
+  auth,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signInWithCredential
 };

@@ -137,3 +137,23 @@ MingleX is a premium dating application with high-fidelity design, KYC verificat
 - [x] Environment Variable mapping completed
 - [x] Complete API Docs & Guides
 
+---
+
+## 🛠️ STABILISATION PASS — 1 Oct 2026
+
+The features above existed in code but the app could not be used end to end. This pass made the whole member journey actually work, verified in the browser (laptop) with automated runs.
+
+- [x] **KYC video recording** — real recording on web (MediaRecorder) and a reworked native recorder; upload now goes through the API (`POST /media/kyc`)
+- [x] **Stuck-at-KYC loop** — route guard, login and splash now share one routing rule (`mobile/src/lib/routing.ts`)
+- [x] **Onboarding** — sends valid enum values, validates each step, and reports server errors instead of ignoring them
+- [x] **Session restore** — reloading the page / reopening the app keeps you signed in
+- [x] **Swiping** — app and server agree on `/api/v1/swipe`; Super Like is a real swipe type; swiped cards no longer come back
+- [x] **Chat** — empty state instead of an endless spinner, de-duplicated messages, voice notes are uploaded so the recipient can play them
+- [x] **Web parity** — dialogs, payments (Razorpay web checkout), tab bar and Text component work in the browser
+- [x] **Backend** — realistic rate limits, enum validation (400 instead of 500), private KYC storage, crash-proof socket handlers, clear startup errors
+- [x] **Video calls** — the callee side now exists (incoming-call prompt, accept / decline, answer flow) and calls work in the browser
+- [x] **Admin** — reviewers can watch the KYC video before approving
+- [x] **Tests** — backend suite green (was 9 failing), with new coverage for the fixes
+
+**Still to verify on a physical device:** native camera recording (Expo Go or a development build), plus phone-OTP login, push notifications, native WebRTC calls and Razorpay native checkout (these four need a development build; they cannot run in Expo Go).
+

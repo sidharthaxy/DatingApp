@@ -1,23 +1,10 @@
-import { S3Client, CreateBucketCommand, PutBucketPolicyCommand, HeadBucketCommand } from '@aws-sdk/client-s3';
-import dotenv from 'dotenv';
-
-dotenv.config();
-
-const BUCKET_NAME = process.env.STORAGE_BUCKET_NAME || 'minglex-media';
-
-const s3 = new S3Client({
-  region: process.env.STORAGE_REGION || 'us-east-1',
-  endpoint: process.env.STORAGE_ENDPOINT || 'http://127.0.0.1:9000',
-  forcePathStyle: true,
-  credentials: {
-    accessKeyId: process.env.STORAGE_ACCESS_KEY || 'minioadmin',
-    secretAccessKey: process.env.STORAGE_SECRET_KEY || 'minioadmin',
-  },
-});
+import 'dotenv/config';
+import { CreateBucketCommand, PutBucketPolicyCommand, HeadBucketCommand } from '@aws-sdk/client-s3';
+import { s3, BUCKET_NAME, STORAGE_ENDPOINT } from '../config/storage';
 
 async function init() {
-  console.log(`Checking for bucket: ${BUCKET_NAME}...`);
-  
+  console.log(`Checking for bucket "${BUCKET_NAME}" at ${STORAGE_ENDPOINT}...`);
+
   try {
     await s3.send(new HeadBucketCommand({ Bucket: BUCKET_NAME }));
     console.log(`Bucket "${BUCKET_NAME}" already exists.`);
@@ -31,17 +18,21 @@ async function init() {
     }
   }
 
-  // Set public read policy
-  console.log(`Setting public read policy for "${BUCKET_NAME}"...`);
+  // Profile photos and chat media are served by plain URL. KYC videos (users/<id>/kyc/*) are
+  // identity documents and stay private — they are only reachable through signed URLs.
+  console.log(`Setting read policy for "${BUCKET_NAME}" (photos + chat public, KYC private)...`);
   const policy = {
     Version: '2012-10-17',
     Statement: [
       {
-        Sid: 'PublicRead',
+        Sid: 'PublicReadPhotosAndChat',
         Effect: 'Allow',
         Principal: '*',
         Action: ['s3:GetObject'],
-        Resource: [`arn:aws:s3:::${BUCKET_NAME}/*`],
+        Resource: [
+          `arn:aws:s3:::${BUCKET_NAME}/users/*/photos/*`,
+          `arn:aws:s3:::${BUCKET_NAME}/chats/*`,
+        ],
       },
     ],
   };
@@ -51,7 +42,11 @@ async function init() {
     Policy: JSON.stringify(policy),
   }));
 
-  console.log('MinIO initialization complete.');
+  console.log('Storage initialization complete.');
 }
 
-init().catch(console.error);
+init().catch((error) => {
+  console.error('Storage initialization failed:', error?.message || error);
+  console.error('Is MinIO running? Start it with: minio server ~/minio_data --console-address :9001');
+  process.exit(1);
+});

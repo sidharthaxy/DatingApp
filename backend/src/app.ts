@@ -1,4 +1,4 @@
-import express, { Express, Request, Response } from 'express';
+import express, { Express, NextFunction, Request, Response } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
@@ -9,9 +9,23 @@ import { setupSwagger } from './config/swagger';
 
 const app: Express = express();
 
+// Behind a reverse proxy (Render, NGINX) the client IP arrives in X-Forwarded-For.
+if (process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1);
+}
+
 // Middleware
-app.use(helmet());
-app.use(cors());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' }, // Allow images from MinIO
+}));
+app.use(cors({
+  origin: true, // Reflect the request origin (allows all origins in dev)
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  optionsSuccessStatus: 200, // Some legacy browsers choke on 204
+}));
+app.options('*', cors()); // Enable pre-flight across all routes
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
@@ -24,29 +38,45 @@ app.use(xssClean); // Strip HTML tags from req body/query/params
 setupSwagger(app);
 
 // Rate limiting
+// A single real user comfortably exceeds 100 requests in 15 minutes (discovery, chat,
+// token refresh, media), so the old global cap locked people out of the app mid-session.
+// Limits are generous by default and tunable per environment.
+const isTest = process.env.NODE_ENV === 'test';
+const isProd = process.env.NODE_ENV === 'production';
+const envInt = (name: string, fallback: number) => {
+  const parsed = parseInt(process.env[name] || '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
 const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
+  max: envInt('RATE_LIMIT_GLOBAL', isProd ? 1500 : 10000),
   message: { success: false, error: { code: 'RATE_LIMIT_EXCEEDED', message: 'Too many requests' } },
   standardHeaders: true,
   legacyHeaders: false,
-  skip: () => process.env.NODE_ENV === 'test'
+  skip: () => isTest
 });
 app.use(globalLimiter);
 
 // Strict rate limiters for specific routes
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 mins
-  max: 10,
+  max: envInt('RATE_LIMIT_AUTH', isProd ? 30 : 1000),
   message: { success: false, error: { code: 'RATE_LIMIT_EXCEEDED', message: 'Too many auth requests' } },
-  skip: () => process.env.NODE_ENV === 'test'
+  standardHeaders: true,
+  legacyHeaders: false,
+  // Silent token refresh happens every 15 minutes per device and must never be throttled
+  // alongside login attempts, otherwise active users get logged out.
+  skip: (req) => isTest || req.path === '/refresh'
 });
 
 const swipeLimiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 1 minute
-  max: 50,
+  max: envInt('RATE_LIMIT_SWIPE', 50),
   message: { success: false, error: { code: 'RATE_LIMIT_EXCEEDED', message: 'You are swiping too fast!' } },
-  skip: () => process.env.NODE_ENV === 'test'
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () => isTest
 });
 
 // Health check endpoint
@@ -75,7 +105,8 @@ import socialRoutes from './routes/social.routes';
 app.use('/api/v1/auth', authLimiter, authRoutes);
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/media', mediaRoutes);
-app.use('/api/v1/swipes', swipeLimiter, swipeRoutes);
+app.use('/api/v1/swipe', swipeLimiter, swipeRoutes);
+app.use('/api/v1/swipes', swipeLimiter, swipeRoutes); // legacy alias
 app.use('/api/v1/chat', chatRoutes);
 app.use('/api/v1/discovery', discoveryRoutes);
 app.use('/api/v1/admin', adminRoutes);
@@ -92,6 +123,20 @@ app.use('/api/v1/social', socialRoutes);
 // Global 404 handler
 app.use((req: Request, res: Response) => {
   res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Route not found' } });
+});
+
+// Global error handler — keeps malformed JSON / multer errors from returning an HTML stack trace
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+  if (err?.type === 'entity.parse.failed') {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_JSON', message: 'Malformed JSON body' } });
+  }
+  if (err?.code === 'LIMIT_FILE_SIZE') {
+    return res.status(413).json({ success: false, error: { code: 'FILE_TOO_LARGE', message: 'Uploaded file is too large' } });
+  }
+  const status = err?.status || err?.statusCode || 500;
+  if (status >= 500) console.error('[Unhandled Error]', err);
+  return res.status(status).json({ success: false, error: { code: status >= 500 ? 'SERVER_ERROR' : 'BAD_REQUEST', message: err?.message || 'Unexpected error' } });
 });
 
 export default app;

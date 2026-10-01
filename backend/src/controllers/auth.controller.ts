@@ -14,6 +14,19 @@ const generateTokens = (user: any) => {
 
 import admin from '../config/firebase';
 
+// The single shape the clients hydrate their session from. `has_kyc` lets the app route a
+// user to the KYC screen without exposing the storage key of the video itself.
+const toSessionUser = (user: any) => ({
+  id: user.id,
+  email: user.email,
+  phone: user.phone,
+  status: user.status,
+  is_profile_complete: user.is_profile_complete,
+  has_kyc: !!user.kyc_video_url,
+  first_name: user.first_name,
+  subscription_tier: user.subscription_tier,
+});
+
 export const googleLogin = async (req: Request, res: Response) => {
   try {
     const { idToken } = req.body;
@@ -55,13 +68,7 @@ export const googleLogin = async (req: Request, res: Response) => {
       data: {
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken,
-        user: {
-          id: user.id,
-          status: user.status,
-          is_profile_complete: user.is_profile_complete,
-          first_name: user.first_name,
-          subscription_tier: user.subscription_tier,
-        }
+        user: toSessionUser(user),
       }
     });
   } catch (error: any) {
@@ -113,13 +120,7 @@ export const verifyFirebaseToken = async (req: Request, res: Response) => {
       data: {
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken,
-        user: {
-          id: user.id,
-          status: user.status,
-          is_profile_complete: user.is_profile_complete,
-          first_name: user.first_name,
-          subscription_tier: user.subscription_tier,
-        }
+        user: toSessionUser(user),
       }
     });
 
@@ -170,10 +171,8 @@ export const refreshToken = async (req: Request, res: Response) => {
       return res.status(401).json({ success: false, error: { code: 'AUTH_FAILED', message: 'User not found' } });
     }
 
-    if (user.status === 'REJECTED') {
-      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'User is blocked' } });
-    }
-
+    // REJECTED users are allowed to refresh, exactly as they are allowed to log in: they need
+    // a live session to reach the appeal screen. The client routes them there on status.
     const tokens = generateTokens(user);
 
     return res.status(200).json({
@@ -181,6 +180,7 @@ export const refreshToken = async (req: Request, res: Response) => {
       data: {
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken,
+        user: toSessionUser(user),
       }
     });
 

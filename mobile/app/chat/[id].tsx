@@ -11,12 +11,12 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useChatStore } from '@/src/store/chatStore';
 import { useAuthStore } from '@/src/store/authStore';
-import { apiGet, apiPost } from '@/src/lib/api';
+import { apiGet, apiUpload, apiJson } from '@/src/lib/api';
+import { mediaUrl } from '@/src/lib/config';
 import ReportSheet from '@/src/components/ReportSheet';
 import { Audio } from 'expo-av';
 import { Play, Square, Pause } from 'lucide-react-native';
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL as string;
 
 function AudioPlayer({ uri, isSender }: { uri: string; isSender: boolean }) {
   const [sound, setSound] = useState<Audio.Sound | null>(null);
@@ -35,7 +35,7 @@ function AudioPlayer({ uri, isSender }: { uri: string; isSender: boolean }) {
 
   const loadSound = async () => {
     const { sound: newSound, status } = await Audio.Sound.createAsync(
-      { uri },
+      { uri: mediaUrl(uri, uri) },
       { progressUpdateIntervalMillis: 100 },
       (status) => {
         if (status.isLoaded) {
@@ -53,17 +53,22 @@ function AudioPlayer({ uri, isSender }: { uri: string; isSender: boolean }) {
   };
 
   const handlePlayPause = async () => {
-    let currentSound = sound;
-    if (!currentSound) {
-      currentSound = await loadSound();
-    }
-    
-    if (isPlaying) {
-      await currentSound.pauseAsync();
+    try {
+      let currentSound = sound;
+      if (!currentSound) {
+        currentSound = await loadSound();
+      }
+
+      if (isPlaying) {
+        await currentSound.pauseAsync();
+        setIsPlaying(false);
+      } else {
+        await currentSound.playAsync();
+        setIsPlaying(true);
+      }
+    } catch (err) {
+      console.warn('Could not play voice note', err);
       setIsPlaying(false);
-    } else {
-      await currentSound.playAsync();
-      setIsPlaying(true);
     }
   };
 
@@ -125,23 +130,24 @@ export default function ChatThreadScreen() {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
 
+  const [sendError, setSendError] = useState('');
+  const [uploadingVoice, setUploadingVoice] = useState(false);
+  const MAX_VOICE_SECONDS = 120; // 2 minute limit
+
+  // Tick the recording timer
   useEffect(() => {
-    let interval: any;
-    if (isRecording) {
-      interval = setInterval(() => {
-        setRecordingDuration(prev => {
-          if (prev >= 120) { // 2 minute limit
-            stopRecording();
-            return 120;
-          }
-          return prev + 1;
-        });
-      }, 1000);
-    } else {
+    if (!isRecording) {
       setRecordingDuration(0);
+      return;
     }
+    const interval = setInterval(() => setRecordingDuration(prev => prev + 1), 1000);
     return () => clearInterval(interval);
   }, [isRecording]);
+
+  // Enforce the limit from an effect (side effects don't belong inside a state updater)
+  useEffect(() => {
+    if (isRecording && recordingDuration >= MAX_VOICE_SECONDS) stopRecording();
+  }, [isRecording, recordingDuration]);
 
   useEffect(() => {
     // Ensure socket is connected with auth token
@@ -152,79 +158,126 @@ export default function ChatThreadScreen() {
     const fetchHistory = async () => {
       if (!id) return;
       try {
-        const res = await apiGet(`/api/v1/chat/messages/${id}`);
+        const res = await apiGet(`/api/v1/chat/messages/${id}?limit=100`);
         const json = await res.json();
         if (json.success && json.data.messages) {
-           const formatted = json.data.messages.reverse().map((m: any) => ({
+           const formatted = [...json.data.messages].reverse().map((m: any) => ({
              id: m.id,
              text: m.content || '',
              mediaUrl: m.media_url,
-             time: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+             createdAt: m.created_at,
+             isDeleted: !!m.is_deleted,
              isSender: m.from_user === currentUser?.id
            }));
            setHistory(formatted);
+           // Let the sender know their messages were seen
+           json.data.messages
+             .filter((m: any) => m.to_user === currentUser?.id && !m.is_read)
+             .forEach((m: any) => markRead(m.id));
+        } else if (!json.success) {
+          setSendError(json.error?.message || 'Could not load this conversation.');
         }
       } catch (err) {
         console.error('Failed to load chat history:', err);
+        setSendError("Can't reach the server. Messages will appear when you're back online.");
       }
     };
     fetchHistory();
   }, [id]);
 
+  // History (loaded once over HTTP) + live messages (socket), without showing anything twice
+  const historyIds = new Set(history.map((m) => m.id));
+  const thread = [
+    ...history,
+    ...messages
+      .filter((m) => (m.toUserId === id || m.fromUserId === id) && !historyIds.has(m.id))
+      .map((m) => ({
+        id: m.id,
+        text: m.content || '',
+        mediaUrl: m.mediaUrl,
+        createdAt: m.createdAt,
+        isDeleted: !!m.is_deleted,
+        isSender: m.fromUserId === currentUser?.id,
+      })),
+  ];
+
+  const formatTime = (iso: string) =>
+    new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
   const handleSend = () => {
-    if (inputText.trim()) {
-      sendMessage(id as string, inputText.trim());
-      setTyping(id as string, false); // stop typing indicator
-      setInputText('');
-      setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
+    const text = inputText.trim();
+    if (!text) return;
+    if (!useChatStore.getState().socket?.connected) {
+      setSendError('Reconnecting to chat… try again in a moment.');
+      connectSocket();
+      return;
     }
+    setSendError('');
+    sendMessage(id as string, text);
+    setTyping(id as string, false); // stop typing indicator
+    setInputText('');
+    setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
   };
 
   const startRecording = async () => {
     try {
-      await Audio.requestPermissionsAsync();
+      setSendError('');
+      const permission = await Audio.requestPermissionsAsync();
+      if (!permission.granted) {
+        setSendError('Microphone access is needed to record a voice note.');
+        return;
+      }
       await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
       const { recording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
       setRecording(recording);
       setIsRecording(true);
     } catch (err) {
       console.error('Failed to start recording', err);
+      setSendError('Could not start recording on this device.');
     }
   };
 
   const stopRecording = async () => {
     if (!recording) return;
+    const seconds = recordingDuration;
     setIsRecording(false);
-    await recording.stopAndUnloadAsync();
-    await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
-    const uri = recording.getURI();
     setRecording(null);
-    if (uri && recordingDuration > 0) {
+    try {
+      await recording.stopAndUnloadAsync();
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+    } catch (err) {
+      console.warn('Failed to stop recording cleanly', err);
+    }
+    const uri = recording.getURI();
+    if (uri && seconds > 0) {
       uploadVoiceNote(uri);
     }
   };
 
+  // Uploads the recording so the OTHER person can actually play it — a local file:// or
+  // blob: URI only ever existed on the sender's device.
   const uploadVoiceNote = async (uri: string) => {
+    setUploadingVoice(true);
     try {
-      // Create a dummy URL or upload to backend in a real scenario
-      // For this implementation, we will simulate the upload to avoid S3 configuration issues in dev
-      const dummyUrl = uri; // Or actual upload logic:
-      /*
-      const res = await apiPost('/api/v1/media/upload-url', {
-        filename: `voice_${Date.now()}.m4a`,
-        contentType: 'audio/m4a',
-        type: 'chat',
-        fileSize: 10000,
-      });
-      const data = await res.json();
-      if (data.success) {
-         // fetch(data.data.uploadUrl, { method: 'PUT', body: blob })
+      const form = new FormData();
+      if (Platform.OS === 'web') {
+        const blob = await (await fetch(uri)).blob();
+        const isMp4 = blob.type.includes('mp4');
+        form.append('file', new Blob([blob], { type: isMp4 ? 'audio/mp4' : 'audio/webm' }), isMp4 ? 'voice.m4a' : 'voice.webm');
+      } else {
+        const ext = (uri.split('?')[0].split('.').pop() || 'm4a').toLowerCase();
+        const type = ext === 'caf' ? 'audio/x-caf' : ext === '3gp' ? 'audio/3gpp' : ext === 'webm' ? 'audio/webm' : 'audio/mp4';
+        // @ts-ignore — React Native's FormData accepts { uri, name, type }
+        form.append('file', { uri, name: `voice.${ext}`, type });
       }
-      */
-      sendMessage(id as string, '', dummyUrl);
+      const uploaded = await apiJson<{ url: string }>(apiUpload('/api/v1/media/chat-upload', form));
+      sendMessage(id as string, '', uploaded.url);
       setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to upload voice note', err);
+      setSendError(`Voice note failed to send: ${err?.message || 'please try again.'}`);
+    } finally {
+      setUploadingVoice(false);
     }
   };
 
@@ -243,14 +296,18 @@ export default function ChatThreadScreen() {
             
             <HStack className="items-center space-x-3">
               <Box className="w-10 h-10 relative">
-                <Image source={{ uri: image }} className="w-full h-full rounded-full" alt="Profile" />
+                <Image source={{ uri: mediaUrl(image) }} className="w-full h-full rounded-full" alt="Profile" />
                 {isUserActive && (
                   <Box className="absolute top-0 right-0 w-3 h-3 bg-primary border-2 border-surface rounded-full" />
                 )}
               </Box>
               <VStack>
                 <Heading className="font-headline text-base font-bold text-on-surface leading-tight">{name}</Heading>
-                <Text className="font-body text-[10px] text-primary uppercase tracking-widest font-bold">Active Now</Text>
+                {(isUserActive || partnerIsTyping) && (
+                  <Text className="font-body text-[10px] text-primary uppercase tracking-widest font-bold">
+                    {partnerIsTyping ? 'Typing…' : 'Active Now'}
+                  </Text>
+                )}
               </VStack>
             </HStack>
           </HStack>
@@ -280,7 +337,15 @@ export default function ChatThreadScreen() {
           contentContainerStyle={{ paddingVertical: 24 }}
         >
           <VStack space="lg">
-            {history.map((msg) => (
+            {thread.length === 0 && (
+              <Box className="items-center py-10">
+                <Text className="font-body text-sm text-on-surface-variant text-center">
+                  You matched with {name}. Say hello!
+                </Text>
+              </Box>
+            )}
+
+            {thread.map((msg) => (
               <Box key={msg.id} className={`flex-row ${msg.isSender ? 'justify-end' : 'justify-start'}`}>
                 <VStack space="xs" className="max-w-[75%]">
                   <Box className={`p-4 rounded-2xl ${
@@ -288,7 +353,11 @@ export default function ChatThreadScreen() {
                       ? 'signature-gradient rounded-br-none shadow-lg shadow-primary/20' 
                       : 'bg-surface-container-high rounded-bl-none'
                   }`}>
-                    {msg.mediaUrl ? (
+                    {msg.isDeleted ? (
+                      <Text className={`font-body text-sm italic ${msg.isSender ? 'text-white/70' : 'text-on-surface-variant'}`}>
+                        Message deleted
+                      </Text>
+                    ) : msg.mediaUrl ? (
                       <AudioPlayer uri={msg.mediaUrl} isSender={msg.isSender} />
                     ) : (
                       <Text className={`font-body text-sm leading-relaxed ${
@@ -301,7 +370,7 @@ export default function ChatThreadScreen() {
                   <Text className={`font-body text-[10px] text-on-surface-variant ${
                     msg.isSender ? 'text-right' : 'text-left'
                   }`}>
-                    {msg.time}
+                    {formatTime(msg.createdAt)}
                   </Text>
                 </VStack>
               </Box>
@@ -319,31 +388,14 @@ export default function ChatThreadScreen() {
                 </Box>
               </Box>
             )}
-            {messages.filter(m => m.toUserId === id || m.fromUserId === id).map((msg) => {
-               const isSender = msg.fromUserId === currentUser?.id;
-               return (
-               <Box key={msg.id} className={`flex-row ${isSender ? 'justify-end' : 'justify-start'}`}>
-                  <VStack space="xs" className="max-w-[75%] mt-4">
-                    <Box className={`p-4 rounded-2xl ${
-                      isSender 
-                        ? 'signature-gradient rounded-br-none shadow-lg shadow-primary/20' 
-                        : 'bg-surface-container-high rounded-bl-none'
-                    }`}>
-                      {msg.mediaUrl ? (
-                        <AudioPlayer uri={msg.mediaUrl} isSender={isSender} />
-                      ) : (
-                        <Text className={`font-body text-sm leading-relaxed ${isSender ? 'text-white' : 'text-on-surface'}`}>{msg.content}</Text>
-                      )}
-                    </Box>
-                    <Text className={`font-body text-[10px] text-on-surface-variant ${isSender ? 'text-right' : 'text-left'}`}>
-                      {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </Text>
-                  </VStack>
-               </Box>
-               );
-            })}
           </VStack>
         </ScrollView>
+
+        {sendError ? (
+          <View className="mx-4 mb-2 p-2 bg-error/10 rounded-lg border border-error/20">
+            <Text className="text-error font-body text-xs text-center">{sendError}</Text>
+          </View>
+        ) : null}
 
         {/* Message Input Area */}
         <Box className="px-4 py-4 bg-surface border-t border-surface-container-low pb-10">
@@ -376,9 +428,16 @@ export default function ChatThreadScreen() {
                       setTyping(id as string, text.length > 0);
                     }}
                     onBlur={() => setTyping(id as string, false)}
+                    // Enter sends on a laptop keyboard (Shift+Enter still adds a new line)
+                    onKeyPress={(e: any) => {
+                      if (Platform.OS === 'web' && e.nativeEvent.key === 'Enter' && !e.nativeEvent.shiftKey) {
+                        e.preventDefault?.();
+                        handleSend();
+                      }
+                    }}
                   />
-                  <TouchableOpacity onPress={startRecording}>
-                    <Mic size={20} color="#afadac" />
+                  <TouchableOpacity onPress={startRecording} disabled={uploadingVoice}>
+                    <Mic size={20} color={uploadingVoice ? '#414BEA' : '#afadac'} />
                   </TouchableOpacity>
                 </>
               )}

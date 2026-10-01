@@ -7,8 +7,13 @@
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
+    "emulators": "firebase emulators:start --only auth",
+    "storage": "minio server ~/minio_data --address :9000 --console-address :9001",
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
+    "db:seed": "ts-node --transpile-only src/scripts/seedInterests.ts",
+    "admin:reset": "ts-node --transpile-only src/scripts/resetAdmin.ts",
+    "storage:init": "ts-node --transpile-only src/scripts/initMinio.ts",
     "test": "dotenv -e .env.test -- npx prisma db push --accept-data-loss && dotenv -e .env.test -- jest --runInBand",
     "test:watch": "dotenv -e .env.test -- jest --watch --runInBand"
   },

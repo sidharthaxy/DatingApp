@@ -24,11 +24,10 @@ import { SmartphoneIcon } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { auth, GoogleAuthProvider, signInWithPopup } from '@/src/lib/firebase';
 import { registerForPushNotifications } from '@/src/lib/notifications';
+import { API_URL, EMULATOR_URL, USE_EMULATOR } from '@/src/lib/config';
+import { homeRouteFor } from '@/src/lib/routing';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
-const USE_EMULATOR = process.env.EXPO_PUBLIC_USE_EMULATOR === 'true';
-const API_URL = process.env.EXPO_PUBLIC_API_URL as string;
-const EMULATOR_URL = process.env.EXPO_PUBLIC_EMULATOR_URL as string;
 const FIREBASE_API_KEY = process.env.EXPO_PUBLIC_FIREBASE_API_KEY || 'fake-api-key';
 
 // ─── Emulator Google Sign-In Modal ────────────────────────────────────────────
@@ -148,7 +147,7 @@ function EmulatorGoogleModal({
 
 // ─── Main Login Screen ────────────────────────────────────────────────────────
 export default function LoginScreen() {
-  const { setUser, setToken, persistRefreshToken } = useAuthStore();
+  const startSession = useAuthStore((state) => state.startSession);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [emulatorModalVisible, setEmulatorModalVisible] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -202,16 +201,21 @@ export default function LoginScreen() {
 
     // Call the emulator's signInWithIdp endpoint
     const emulatorAuthUrl = `${EMULATOR_URL}/identitytoolkit.googleapis.com/v1/accounts:signInWithIdp?key=${FIREBASE_API_KEY}`;
-    const emRes = await fetch(emulatorAuthUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        postBody: `id_token=${fakeGoogleJwt}&providerId=google.com`,
-        requestUri: API_URL,
-        returnIdpCredential: true,
-        returnSecureToken: true,
-      }),
-    });
+    let emRes: Response;
+    try {
+      emRes = await fetch(emulatorAuthUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          postBody: `id_token=${fakeGoogleJwt}&providerId=google.com`,
+          requestUri: API_URL,
+          returnIdpCredential: true,
+          returnSecureToken: true,
+        }),
+      });
+    } catch {
+      throw new Error(`Can't reach the Firebase Auth emulator at ${EMULATOR_URL}. Start it with "npm run emulators" in backend/.`);
+    }
     const emData = await emRes.json();
     if (emData.error) throw new Error(emData.error.message);
 
@@ -235,7 +239,19 @@ export default function LoginScreen() {
         await finalizeLogin(idToken);
       } catch (error: any) {
         console.error('[Web Google Login Error]', error);
-        setErrorMsg(error.message || 'Google Sign-In failed');
+        if (error?.code === 'auth/popup-closed-by-user' || error?.code === 'auth/cancelled-popup-request') {
+          setErrorMsg('');
+        } else if (error?.code === 'auth/popup-blocked') {
+          setErrorMsg('Your browser blocked the sign-in popup. Allow popups for this site and try again.');
+        } else if (error?.code === 'auth/network-request-failed') {
+          setErrorMsg(
+            USE_EMULATOR
+              ? `Can't reach the Firebase Auth emulator at ${EMULATOR_URL}. Start it with "npm run emulators" in backend/.`
+              : 'Network error. Check your connection and try again.'
+          );
+        } else {
+          setErrorMsg(error.message || 'Google Sign-In failed');
+        }
       } finally {
         setGoogleLoading(false);
       }
@@ -257,32 +273,25 @@ export default function LoginScreen() {
   };
 
   const finalizeLogin = async (idToken: string) => {
-    const res = await fetch(`${API_URL}/api/v1/auth/google`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ idToken }),
-    });
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error?.message || 'Login failed');
+    let res: Response;
+    try {
+      res = await fetch(`${API_URL}/api/v1/auth/google`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken }),
+      });
+    } catch {
+      throw new Error(`Can't reach the MingleX server at ${API_URL}. Is the backend running?`);
+    }
+    const data = await res.json().catch(() => null);
+    if (!data?.success) throw new Error(data?.error?.message || `Login failed (${res.status})`);
 
-    setToken(data.data.accessToken);
-    await persistRefreshToken(data.data.refreshToken);
-    setUser({
-      id: data.data.user.id,
-      status: data.data.user.status,
-      is_profile_complete: data.data.user.is_profile_complete ?? false,
-      first_name: data.data.user.first_name ?? null,
-      subscription_tier: data.data.user.subscription_tier ?? 'FREE',
-    });
+    const user = await startSession(data.data);
 
     // Register FCM token with backend (non-blocking)
     registerForPushNotifications().catch(() => {});
 
-    if (data.data.user.is_profile_complete && data.data.user.status === 'APPROVED') {
-      router.replace('/(tabs)/discovery');
-    } else {
-      router.replace('/onboarding');
-    }
+    router.replace(homeRouteFor(user));
   };
 
   const handlePhoneLogin = () => {

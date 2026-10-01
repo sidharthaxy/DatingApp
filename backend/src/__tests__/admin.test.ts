@@ -6,22 +6,38 @@ const prisma = new PrismaClient();
 let adminToken: string;
 let targetUserId: string;
 
-beforeEach(async () => {
-  const authRes = await request(app)
-    .post('/api/v1/auth/google')
-    .send({ idToken: 'admin_user' });
-  adminToken = authRes.body.data.accessToken;
+let userToken: string;
 
-  // Since we don't have role=ADMIN yet, we just bypass it by testing the logic
-  // Assume the user is an admin for this test or the endpoints don't strictly check roles yet
+beforeEach(async () => {
+  // Admin routes require a token issued by the admin login (the first login seeds the
+  // default super admin when the AdminUser table is empty).
+  const adminRes = await request(app)
+    .post('/api/v1/admin/auth/login')
+    .send({ email: 'admin@minglex.com', password: 'admin123' });
+  adminToken = adminRes.body.data.token;
 
   const targetRes = await request(app)
     .post('/api/v1/auth/google')
     .send({ idToken: 'target_user' });
   targetUserId = targetRes.body.data.user.id;
+  userToken = targetRes.body.data.accessToken;
 });
 
 describe('Admin API', () => {
+  it('should refuse a regular member token', async () => {
+    const res = await request(app)
+      .get('/api/v1/admin/users')
+      .set('Authorization', `Bearer ${userToken}`);
+
+    expect(res.status).toBe(403);
+  });
+
+  it('should refuse requests without a token', async () => {
+    const res = await request(app).get('/api/v1/admin/users');
+
+    expect(res.status).toBe(401);
+  });
+
   it('should list users with pagination', async () => {
     const res = await request(app)
       .get('/api/v1/admin/users?page=1&limit=10')

@@ -6,17 +6,20 @@ This document outlines the step-by-step process required to transition the Mingl
 
 In a local setup, you were likely using `.env` files with localhost URLs. For production, these must be strictly defined in your hosting provider's environment settings. 
 
-**Backend (`backend/.env`)**
+**Backend (`backend/.env`)** — see `backend/.env.example` for the full list
+- `NODE_ENV`: `production`. (`development` forces the Firebase Auth emulator.)
 - `DATABASE_URL`: Must point to your production PostgreSQL (e.g., Neon). *Ensure you append `?pgbouncer=true&connection_limit=1` if using serverless Postgres.*
 - `REDIS_URL`: Point to your production Redis instance (e.g., Upstash or Render Redis).
-- `JWT_SECRET`: Generate a highly secure, random 64+ character string. DO NOT use the default `secret`.
+- `JWT_SECRET`, `REFRESH_JWT_SECRET`: Two different, highly secure random 64+ character strings. DO NOT use the defaults.
 - `PORT`: Usually automatically supplied by the host (e.g., Render sets this to `10000`).
-- `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`: Export these from your Production Firebase Project settings.
+- `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`: Export these from your Production Firebase Project settings. Remove `FIREBASE_AUTH_EMULATOR_HOST`.
+- `STORAGE_ENDPOINT`, `STORAGE_ACCESS_KEY`, `STORAGE_SECRET_KEY`, `STORAGE_BUCKET_NAME`, `STORAGE_REGION`: your S3 / R2 credentials (see section 4).
+- `MEDIA_BASE_URL`: the public base URL clients load photos / chat media from (public bucket URL or CDN).
+- `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`: live keys.
 
-**Frontend App (`mobile/.env`)**
-- `EXPO_PUBLIC_API_URL`: Set this to your deployed backend URL (e.g., `https://api.minglex.com`).
-- `EXPO_PUBLIC_SOCKET_URL`: Typically the same as `EXPO_PUBLIC_API_URL`.
-- *(Remove any local fallback like `|| 'http://localhost:8000'` in code to prevent silent connection failures).*
+**Frontend App (`mobile/.env`)** — see `mobile/.env.example`
+- `EXPO_PUBLIC_API_URL`: Set this to your deployed backend URL (e.g., `https://api.minglex.com`). The socket connection uses the same URL.
+- `EXPO_PUBLIC_USE_EMULATOR`: `false`.
 
 **Admin Panel (`admin/.env`)**
 - `VITE_API_URL`: Set to your deployed backend (e.g., `https://api.minglex.com/api/v1`).
@@ -28,7 +31,7 @@ In a local setup, you were likely using `.env` files with localhost URLs. For pr
 1. Connect your repository to Render and create a new **Web Service**.
 2. **Build Command**: `npm install && npx prisma generate && npx tsc`
 3. **Start Command**: `npm start` (which should run `node dist/app.js` or `node dist/server.js`).
-4. **Pre-Deploy Database Migration**: In your Render settings, under Advanced, specify a pre-deploy script or run `npx prisma db push --accept-data-loss` securely via SSH/Console to sync the DB schema.
+4. **Pre-Deploy Database Migration**: In your Render settings, under Advanced, specify a pre-deploy script or run `npx prisma db push` securely via SSH/Console to sync the DB schema.
 5. **WebSocket Configuration**: Ensure your Render service allows WebSocket connections (Render handles this natively on port 443 wss://).
 
 ---
@@ -44,23 +47,20 @@ In a local setup, you were likely using `.env` files with localhost URLs. For pr
 
 ## 4. Media Storage Migration (Cloudflare R2 / AWS S3)
 
-Currently, the app relies on local URL paths for media uploads (like `uploads/images/...`). For production, this is volatile because Node instances are ephemeral.
+No code changes are needed. All storage access lives in `backend/src/config/storage.ts` and speaks the S3 API, so the same code runs against MinIO locally and S3 / R2 in production — only the environment changes:
 
-**Required Code Changes:**
-1. In `backend/src/controllers/media.controller.ts`, replace the local file system `fs.writeFile` logic with the `aws-sdk` (S3 client).
-2. Configure the client to point to Cloudflare R2:
-   ```typescript
-   import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
-   const s3 = new S3Client({
-     region: "auto",
-     endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-     credentials: {
-       accessKeyId: process.env.R2_ACCESS_KEY_ID,
-       secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
-     },
-   });
-   ```
-3. Update the database to store the absolute CDN URL of the uploaded image rather than the relative `uploads/...` path.
+| Variable | Cloudflare R2 example |
+| :--- | :--- |
+| `STORAGE_ENDPOINT` | `https://<ACCOUNT_ID>.r2.cloudflarestorage.com` |
+| `STORAGE_REGION` | `auto` |
+| `STORAGE_ACCESS_KEY` / `STORAGE_SECRET_KEY` | your R2 API token |
+| `STORAGE_BUCKET_NAME` | `minglex-media` |
+| `MEDIA_BASE_URL` | public bucket / CDN base for photo and chat media, e.g. `https://pub-xxxx.r2.dev` — links become `<MEDIA_BASE_URL>/<key>` |
+| `STORAGE_PUBLIC_URL` | only if clients must reach the S3 API on a different host than the server does (presigned URLs); normally leave unset |
+
+**Access rules.** Profile photos (`users/*/photos/*`) and chat media (`chats/*`) are loaded by plain URL and must be publicly readable. KYC videos (`users/*/kyc/*`) are identity documents and must stay **private** — reviewers receive short-lived signed URLs from the admin API. `npm run storage:init` applies exactly this policy on MinIO; replicate it in your bucket settings.
+
+**Schema.** After pulling this version run `npx prisma db push` once: the `SwipeType` enum gained `SUPER_LIKE`.
 
 ---
 

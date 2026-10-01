@@ -12,14 +12,11 @@ import { useChatStore } from '@/src/store/chatStore';
 import { useAuthStore } from '@/src/store/authStore';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { apiGet } from '@/src/lib/api';
-
-const PLACEHOLDER_IMAGE = 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=200';
-const API_URL = process.env.EXPO_PUBLIC_API_URL as string;
+import { mediaUrl } from '@/src/lib/config';
+import { useFocusEffect } from 'expo-router';
 
 function getPartnerImage(partner: any): string {
-  const raw = partner.photos?.[0]?.url;
-  if (!raw) return PLACEHOLDER_IMAGE;
-  return raw.startsWith('http') ? raw : `${API_URL}/${raw}`;
+  return mediaUrl(partner?.photos?.[0]?.url);
 }
 
 function timeAgo(dateStr: string | null | undefined): string {
@@ -36,17 +33,20 @@ function timeAgo(dateStr: string | null | undefined): string {
 
 export default function ChatScreen() {
   const router = useRouter();
-  const { conversations, fetchConversations, activeUsers, isConnected, connectSocket } = useChatStore();
+  const { conversations, conversationsLoaded, fetchConversations, activeUsers, isConnected, connectSocket } = useChatStore();
   const user = useAuthStore((s) => s.user);
 
   const [stories, setStories] = React.useState<any[]>([]);
 
-  useEffect(() => {
-    // Ensure socket is connected (with auth token) when user enters chat tab
-    connectSocket();
-    fetchConversations();
-    fetchStories();
-  }, []);
+  // Refresh every time the tab comes into view so new matches and messages show up
+  useFocusEffect(
+    React.useCallback(() => {
+      // Ensure socket is connected (with auth token) when user enters chat tab
+      connectSocket();
+      fetchConversations();
+      fetchStories();
+    }, [])
+  );
 
   const fetchStories = async () => {
     try {
@@ -114,7 +114,7 @@ export default function ChatScreen() {
                   <TouchableOpacity key={story.id} className="items-center" onPress={() => {}}>
                     <View className="w-16 h-16 rounded-full p-[2px] bg-gradient-to-tr from-primary to-purple-500 mb-1">
                       <Image 
-                        source={{ uri: story.user?.photos?.[0]?.url?.startsWith('http') ? story.user.photos[0].url : `${API_URL}/${story.user?.photos?.[0]?.url}` || PLACEHOLDER_IMAGE }}
+                        source={{ uri: getPartnerImage(story.user) }}
                         className="w-full h-full rounded-full border-2 border-surface"
                         alt="Story"
                       />
@@ -126,10 +126,20 @@ export default function ChatScreen() {
             </ScrollView>
           </VStack>
 
-          {conversations.length === 0 ? (
+          {!conversationsLoaded ? (
             <Box className="flex-1 items-center justify-center py-24">
               <ActivityIndicator color="#414BEA" />
               <Text className="text-on-surface-variant font-body mt-4">Loading matches…</Text>
+            </Box>
+          ) : conversations.length === 0 ? (
+            <Box className="items-center justify-center py-24 px-10">
+              <Text className="font-headline text-lg font-bold text-on-surface text-center">No matches yet</Text>
+              <Text className="text-on-surface-variant font-body text-center mt-2">
+                When you and someone else like each other, your conversation will appear here. Keep swiping!
+              </Text>
+              <TouchableOpacity onPress={() => router.push('/(tabs)/discovery')} className="mt-6 px-6 py-3 signature-gradient rounded-full">
+                <Text className="text-white font-bold">Go to Discovery</Text>
+              </TouchableOpacity>
             </Box>
           ) : (
             <>
@@ -214,12 +224,6 @@ export default function ChatScreen() {
                 </VStack>
               )}
 
-              {/* No chats at all */}
-              {conversations.length > 0 && recentChats.length === 0 && newMatches.length === 0 && (
-                <Box className="items-center py-16">
-                  <Text className="text-on-surface-variant font-body">No matches yet. Keep swiping!</Text>
-                </Box>
-              )}
             </>
           )}
         </ScrollView>

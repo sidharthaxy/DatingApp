@@ -50,4 +50,30 @@ describe('Auth API', () => {
       expect(count).toBe(1);
     });
   });
+
+  describe('POST /api/v1/auth/refresh', () => {
+    it('should rotate tokens and return the session user', async () => {
+      const login = await request(app)
+        .post('/api/v1/auth/google')
+        .send({ idToken: 'refresh_user' });
+
+      const res = await request(app)
+        .post('/api/v1/auth/refresh')
+        .send({ refreshToken: login.body.data.refreshToken });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.accessToken).toBeDefined();
+      expect(res.body.data.user.id).toBe(login.body.data.user.id);
+      expect(res.body.data.user.has_kyc).toBe(false);
+      expect(res.body.data.user.is_profile_complete).toBe(false);
+    });
+
+    it('should reject a garbage refresh token', async () => {
+      const res = await request(app)
+        .post('/api/v1/auth/refresh')
+        .send({ refreshToken: 'not-a-token' });
+
+      expect(res.status).toBe(401);
+    });
+  });
 });

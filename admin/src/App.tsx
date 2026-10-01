@@ -18,6 +18,11 @@ interface User {
   city: string | null;
   status: 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED';
   photos: { url: string }[];
+  living_in?: string | null;
+  is_profile_complete?: boolean;
+  kyc_video_url?: string | null;
+  /** Short-lived signed link to the (private) KYC video, issued by the admin API */
+  kyc_video_view_url?: string | null;
 }
 
 interface AdminUser {
@@ -269,9 +274,12 @@ export default function App() {
       const data = await res.json();
       if (data.success) {
         setUsers(prev => prev.filter(u => u.id !== userId));
+      } else {
+        alert(data.error?.message || `Failed to ${action} user`);
       }
     } catch (err) {
       console.error(`Failed to ${action}:`, err);
+      alert('Network error');
     }
   };
 
@@ -478,17 +486,37 @@ export default function App() {
                         alt="Profile" 
                         className="w-32 h-40 object-cover rounded-2xl bg-surface-container"
                       />
+                      {/* The verification video is what the reviewer is actually approving */}
+                      {user.kyc_video_view_url ? (
+                        <video
+                          src={user.kyc_video_view_url}
+                          controls
+                          preload="metadata"
+                          className="w-32 h-40 object-cover rounded-2xl bg-black"
+                        />
+                      ) : (
+                        <div className="w-32 h-40 rounded-2xl bg-surface-container flex items-center justify-center text-center px-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/50">
+                          No KYC video yet
+                        </div>
+                      )}
                       <div className="flex-1 flex flex-col justify-between">
                         <div>
                           <h3 className="text-xl font-extrabold font-headline mb-1">{user.first_name || 'Anonymous'}</h3>
                           <div className="text-[10px] font-bold text-on-surface-variant/40 uppercase tracking-widest mb-4">
-                            ID: {user.id.slice(0, 8)} • {user.city || 'N/A'}
+                            ID: {user.id.slice(0, 8)} • {user.living_in || user.city || 'N/A'}
                           </div>
+                          {!user.kyc_video_url && (
+                            <div className="text-xs text-on-surface-variant mb-2">
+                              {user.is_profile_complete ? 'Waiting for the member to record their verification video.' : 'Profile not finished yet.'}
+                            </div>
+                          )}
                         </div>
                         <div className="flex space-x-3">
                           <button 
                             onClick={() => handleAction(user.id, 'approve')}
-                            className="flex-1 h-10 bg-primary text-white text-[10px] font-bold uppercase tracking-widest rounded-xl hover:bg-primary-dark transition-colors"
+                            disabled={!user.kyc_video_url}
+                            title={user.kyc_video_url ? undefined : 'This member has not submitted a KYC video'}
+                            className="flex-1 h-10 bg-primary text-white text-[10px] font-bold uppercase tracking-widest rounded-xl hover:bg-primary-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                           >
                             Approve
                           </button>

@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, InterestedIn, RelationshipGoal } from '@prisma/client';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
 import { invalidateDiscoveryCache } from '../config/redis';
 
@@ -17,7 +17,7 @@ export const getMe = async (req: AuthenticatedRequest, res: Response) => {
       return res.status(404).json({ success: false, error: { code: 'USER_NOT_FOUND', message: 'User not found' } });
     }
 
-    return res.status(200).json({ success: true, data: user });
+    return res.status(200).json({ success: true, data: { ...user, has_kyc: !!user.kyc_video_url } });
   } catch (error: any) {
     return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: error.message } });
   }
@@ -78,6 +78,15 @@ export const updatePreferences = async (req: AuthenticatedRequest, res: Response
   try {
     const userId = req.user?.id;
     const { interested_in, relationship_goal } = req.body;
+
+    // Passing an unknown enum value straight to Prisma throws and surfaced as an opaque 500,
+    // which silently dropped the user's preferences during onboarding.
+    if (interested_in !== undefined && !Object.values(InterestedIn).includes(interested_in)) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_INPUT', message: `interested_in must be one of ${Object.values(InterestedIn).join(', ')}` } });
+    }
+    if (relationship_goal !== undefined && !Object.values(RelationshipGoal).includes(relationship_goal)) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_INPUT', message: `relationship_goal must be one of ${Object.values(RelationshipGoal).join(', ')}` } });
+    }
 
     await prisma.user.update({
       where: { id: userId },
@@ -149,18 +158,18 @@ export const updateInterests = async (req: AuthenticatedRequest, res: Response) 
       return res.status(400).json({ success: false, error: { code: 'INVALID_INPUT', message: 'interest_ids must be an array' } });
     }
 
-    await prisma.userInterest.deleteMany({
-      where: { user_id: userId }
-    });
-
-    if (interest_ids.length > 0) {
-      await prisma.userInterest.createMany({
-        data: interest_ids.map((id: string) => ({
-          user_id: userId as string,
-          interest_id: id
-        }))
-      });
+    const uniqueIds: string[] = [...new Set<string>(interest_ids)];
+    const known = await prisma.interest.count({ where: { id: { in: uniqueIds } } });
+    if (known !== uniqueIds.length) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_INPUT', message: 'One or more interests do not exist' } });
     }
+
+    await prisma.$transaction([
+      prisma.userInterest.deleteMany({ where: { user_id: userId } }),
+      prisma.userInterest.createMany({
+        data: uniqueIds.map((id) => ({ user_id: userId as string, interest_id: id }))
+      }),
+    ]);
 
     await checkAndMarkProfileComplete(userId as string);
 

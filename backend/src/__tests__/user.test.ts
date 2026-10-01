@@ -96,4 +96,39 @@ describe('User API', () => {
       expect(user?.longitude).toBe(-90.0);
     });
   });
+
+  describe('POST /api/v1/users/preferences', () => {
+    it('should save valid preferences', async () => {
+      const res = await request(app)
+        .post('/api/v1/users/preferences')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({ interested_in: 'WOMEN', relationship_goal: 'FUN_NEW_FRIENDS' });
+
+      expect(res.status).toBe(200);
+      const user = await prisma.user.findUnique({ where: { firebase_uid: 'user_test_token' } });
+      expect(user?.interested_in).toBe('WOMEN');
+      expect(user?.relationship_goal).toBe('FUN_NEW_FRIENDS');
+    });
+
+    it('should reject unknown enum values with a 400 instead of crashing', async () => {
+      const res = await request(app)
+        .post('/api/v1/users/preferences')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({ interested_in: 'MALE', relationship_goal: 'SHORT_TERM' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('INVALID_INPUT');
+    });
+  });
+
+  describe('POST /api/v1/users/interests', () => {
+    it('should reject interest ids that do not exist', async () => {
+      const res = await request(app)
+        .post('/api/v1/users/interests')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({ interest_ids: ['00000000-0000-4000-8000-000000000000'] });
+
+      expect(res.status).toBe(400);
+    });
+  });
 });

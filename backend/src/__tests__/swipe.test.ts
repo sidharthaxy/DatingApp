@@ -61,4 +61,37 @@ describe('Swipe API', () => {
     expect(res.body.data.match).not.toBeNull();
     expect(res.body.data.match.user1_id).toBe(user2Id); // The one who created the match
   });
+
+  it('should accept a SUPER_LIKE and match it against a LIKE', async () => {
+    await request(app)
+      .post('/api/v1/swipe')
+      .set('Authorization', `Bearer ${authToken1}`)
+      .send({ to_user_id: user2Id, action: 'SUPER_LIKE' });
+
+    const res = await request(app)
+      .post('/api/v1/swipe')
+      .set('Authorization', `Bearer ${authToken2}`)
+      .send({ to_user_id: user1Id, action: 'LIKE' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.match).not.toBeNull();
+  });
+
+  it('should reject an unknown swipe action', async () => {
+    const res = await request(app)
+      .post('/api/v1/swipe')
+      .set('Authorization', `Bearer ${authToken1}`)
+      .send({ to_user_id: user2Id, action: 'MAYBE' });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('should 404 when the target user does not exist', async () => {
+    const res = await request(app)
+      .post('/api/v1/swipe')
+      .set('Authorization', `Bearer ${authToken1}`)
+      .send({ to_user_id: '00000000-0000-0000-0000-000000000000', action: 'LIKE' });
+
+    expect(res.status).toBe(404);
+  });
 });

@@ -35,7 +35,7 @@ export const getMyStats = async (req: AuthenticatedRequest, res: Response) => {
     });
 
     const likesReceived = await prisma.swipe.count({
-      where: { to_user: userId, type: 'LIKE' }
+      where: { to_user: userId, type: { in: ['LIKE', 'SUPER_LIKE'] } }
     });
 
     const dislikesReceived = await prisma.swipe.count({

@@ -16,9 +16,9 @@ beforeEach(async () => {
   userId = authRes.body.data.user.id;
 
   const adminRes = await request(app)
-    .post('/api/v1/auth/google')
-    .send({ idToken: 'admin_test_user' });
-  adminToken = adminRes.body.data.accessToken;
+    .post('/api/v1/admin/auth/login')
+    .send({ email: 'admin@minglex.com', password: 'admin123' });
+  adminToken = adminRes.body.data.token;
 
   const target = await prisma.user.create({
     data: {

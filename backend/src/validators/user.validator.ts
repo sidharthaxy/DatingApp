@@ -1,13 +1,16 @@
 import { z } from 'zod';
 
+const optionalString = (min: number, max: number) =>
+  z.string().min(min).max(max).optional().or(z.literal('').transform(() => undefined));
+
 export const updateMeSchema = z.object({
-  first_name: z.string().min(2).max(50).optional(),
-  bio: z.string().max(500).optional(),
+  first_name: optionalString(2, 50),
+  bio: z.string().max(500).optional().or(z.literal('').transform(() => undefined)),
   height_cm: z.number().min(100).max(250).optional(),
-  job_title: z.string().max(100).optional(),
-  company: z.string().max(100).optional(),
-  living_in: z.string().max(100).optional(),
-  dob: z.string().datetime().optional(),
+  job_title: optionalString(1, 100),
+  company: optionalString(1, 100),
+  living_in: optionalString(1, 100),
+  dob: z.string().datetime().optional().or(z.literal('').transform(() => undefined)),
   gender: z.enum(['MALE', 'FEMALE', 'NON_BINARY']).optional(),
 }).strict();
 
@@ -17,7 +20,7 @@ export const updateLocationSchema = z.object({
 }).strict();
 
 export const updateInterestsSchema = z.object({
-  interest_ids: z.array(z.string().uuid()).min(1).max(10),
+  interest_ids: z.array(z.string().uuid()).min(0).max(50),
 }).strict();
 
 export const updateFcmTokenSchema = z.object({

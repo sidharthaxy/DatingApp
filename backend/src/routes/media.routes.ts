@@ -1,12 +1,28 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth.middleware';
-import { getSignedUploadUrl, uploadPhoto, uploadPhotoMiddleware, generateSignedReadUrl, confirmPhotoUpload, confirmKycUpload } from '../controllers/media.controller';
+import {
+  getSignedUploadUrl,
+  uploadPhoto,
+  uploadPhotoMiddleware,
+  uploadKyc,
+  uploadKycMiddleware,
+  uploadChatMedia,
+  uploadChatMediaMiddleware,
+  generateSignedReadUrl,
+  confirmPhotoUpload,
+  confirmKycUpload,
+} from '../controllers/media.controller';
 
 const router = Router();
 router.use(authenticate);
 
-router.post('/upload-url', getSignedUploadUrl);
+// Multipart uploads proxied through the API (what the apps use)
 router.post('/upload', uploadPhotoMiddleware, uploadPhoto);
+router.post('/kyc', uploadKycMiddleware, uploadKyc);
+router.post('/chat-upload', uploadChatMediaMiddleware, uploadChatMedia);
+
+// Presigned direct-to-storage flow
+router.post('/upload-url', getSignedUploadUrl);
 router.post('/signed-url', generateSignedReadUrl);
 router.post('/upload-photo', confirmPhotoUpload);
 router.post('/upload-kyc', confirmKycUpload);

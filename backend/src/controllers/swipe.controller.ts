@@ -20,6 +20,15 @@ export const swipeUser = async (req: AuthenticatedRequest, res: Response) => {
       return res.status(400).json({ success: false, error: { code: 'INVALID_INPUT', message: 'Cannot swipe self' } });
     }
 
+    if (!Object.values(SwipeType).includes(action)) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_INPUT', message: `action must be one of ${Object.values(SwipeType).join(', ')}` } });
+    }
+
+    const target = await prisma.user.findUnique({ where: { id: to_user_id }, select: { id: true } });
+    if (!target) {
+      return res.status(404).json({ success: false, error: { code: 'USER_NOT_FOUND', message: 'Target user not found' } });
+    }
+
     // Upsert to handle prevent duplicate
     const swipe = await prisma.swipe.upsert({
       where: {
@@ -40,8 +49,10 @@ export const swipeUser = async (req: AuthenticatedRequest, res: Response) => {
 
     await invalidateDiscoveryCache(userId as string);
 
+    const isPositive = (type: SwipeType) => type === 'LIKE' || type === 'SUPER_LIKE';
+
     let match = null;
-    if (action === 'LIKE') {
+    if (isPositive(action)) {
       const mutualSwipe = await prisma.swipe.findUnique({
         where: {
           from_user_to_user: {
@@ -51,7 +62,7 @@ export const swipeUser = async (req: AuthenticatedRequest, res: Response) => {
         }
       });
 
-      if (mutualSwipe && mutualSwipe.type === 'LIKE') {
+      if (mutualSwipe && isPositive(mutualSwipe.type)) {
         match = await prisma.match.findFirst({
           where: {
             OR: [

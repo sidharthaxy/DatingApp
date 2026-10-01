@@ -33,25 +33,56 @@ export const initSocket = (server: HttpServer) => {
     }
   });
 
-  io.on('connection', async (socket) => {
-    const userId = (socket as AuthSocket).userId;
-    console.log(`User connected: ${userId} (${socket.id})`);
+  io.on('connection', async (rawSocket) => {
+    const userId = (rawSocket as AuthSocket).userId;
+    console.log(`User connected: ${userId} (${rawSocket.id})`);
+
+    // Every handler below is async. An exception inside one (bad payload, DB hiccup) would
+    // otherwise be an unhandled promise rejection, which terminates the whole Node process
+    // and drops every connected user. Route failures back to the sender instead.
+    const socket = rawSocket;
+    const originalOn = rawSocket.on.bind(rawSocket);
+    (socket as any).on = (event: string, handler: (...args: any[]) => any) =>
+      originalOn(event, async (...args: any[]) => {
+        try {
+          await handler(...args);
+        } catch (error: any) {
+          console.error(`[Socket] "${event}" handler failed for ${userId}:`, error?.message || error);
+          rawSocket.emit('error', { message: 'Something went wrong. Please try again.' });
+        }
+      });
 
     // Store user as online in Redis
-    await redisClient.set(`online_users:${userId}`, socket.id);
+    try {
+      await redisClient.set(`online_users:${userId}`, socket.id);
+    } catch (error: any) {
+      console.error('[Socket] Failed to mark user online:', error?.message || error);
+    }
     
     // Broadcast status
     socket.broadcast.emit('user_online', { userId });
 
     socket.on('disconnect', async () => {
       console.log(`User disconnected: ${userId}`);
-      await redisClient.del(`online_users:${userId}`);
-      socket.broadcast.emit('user_offline', { userId });
+      // Only go offline if this was the user's current socket — a second tab or a
+      // reconnect may already have registered a newer one.
+      const current = await redisClient.get(`online_users:${userId}`);
+      if (current === socket.id) {
+        await redisClient.del(`online_users:${userId}`);
+        socket.broadcast.emit('user_offline', { userId });
+      }
     });
 
     // Handle sending a message
     socket.on('sendMessage', async (data) => {
-      const { partnerId, content, media_url } = data;
+      const { partnerId, content, media_url } = data || {};
+
+      if (typeof partnerId !== 'string' || (!content && !media_url)) {
+        return socket.emit('error', { message: 'A message needs a recipient and some content' });
+      }
+      if (typeof content === 'string' && content.length > 5000) {
+        return socket.emit('error', { message: 'Message is too long' });
+      }
       
       const match = await prisma.match.findFirst({
         where: {
@@ -70,8 +101,9 @@ export const initSocket = (server: HttpServer) => {
         data: {
           from_user: userId,
           to_user: partnerId,
-          content,
-          media_url
+          // Strip tags here too: the REST xss middleware does not cover socket payloads
+          content: typeof content === 'string' ? content.replace(/<[^>]*>?/gm, '') : '',
+          media_url: typeof media_url === 'string' ? media_url : null
         }
       });
 
@@ -171,7 +203,22 @@ export const initSocket = (server: HttpServer) => {
 
     // ─── WebRTC Signaling ──────────────────────────────────────────────────────────
     socket.on('call_initiated', async (data) => {
-      const { partnerId } = data;
+      const { partnerId } = data || {};
+      if (typeof partnerId !== 'string') return;
+
+      // Only matched members may call each other
+      const match = await prisma.match.findFirst({
+        where: {
+          OR: [
+            { user1_id: userId, user2_id: partnerId },
+            { user1_id: partnerId, user2_id: userId },
+          ]
+        }
+      });
+      if (!match) {
+        return socket.emit('call_declined', { from: partnerId, reason: 'not_matched' });
+      }
+
       const partnerSocketId = await redisClient.get(`online_users:${partnerId}`);
       if (partnerSocketId) {
         io.to(partnerSocketId).emit('call_incoming', { from: userId });
@@ -184,6 +231,19 @@ export const initSocket = (server: HttpServer) => {
           { type: 'CALL' }
         );
       }
+    });
+
+    // Callee picked up (their camera is live and they are listening for the offer)
+    socket.on('call_accepted', async (data) => {
+      const { partnerId } = data || {};
+      const partnerSocketId = await redisClient.get(`online_users:${partnerId}`);
+      if (partnerSocketId) io.to(partnerSocketId).emit('call_accepted', { from: userId });
+    });
+
+    socket.on('call_declined', async (data) => {
+      const { partnerId, reason } = data || {};
+      const partnerSocketId = await redisClient.get(`online_users:${partnerId}`);
+      if (partnerSocketId) io.to(partnerSocketId).emit('call_declined', { from: userId, reason });
     });
 
     socket.on('webrtc_offer', async (data) => {

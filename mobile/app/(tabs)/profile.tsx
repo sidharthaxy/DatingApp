@@ -12,6 +12,8 @@ import { useRouter, type Href } from 'expo-router';
 import { Settings, Pencil, ShieldCheck, Activity, Sparkles, ChevronRight, LogOut, Crown, Heart, List, Eye, ShieldAlert, MessageCircleHeart } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { apiGet } from '@/src/lib/api';
+import { mediaUrl } from '@/src/lib/config';
+import { useFocusEffect } from 'expo-router';
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -24,14 +26,30 @@ export default function ProfileScreen() {
 
   const [stats, setStats] = useState({ profile_views: 0, likes_received: 0, dislikes_received: 0 });
 
-  useEffect(() => {
-    apiGet('/api/v1/analytics/me')
-      .then(r => r.json())
-      .then(json => { if (json.success) setStats(json.data); })
-      .catch(() => {}); // Non-blocking
-  }, []);
+  const [profile, setProfile] = useState<{ bio?: string | null; photos?: { url: string }[]; living_in?: string | null } | null>(null);
+  const reloadUser = useAuthStore(state => state.reloadUser);
 
+  // Refresh whenever the tab is opened: review status, tier and stats change server-side
+  useFocusEffect(
+    React.useCallback(() => {
+      apiGet('/api/v1/analytics/me')
+        .then(r => r.json())
+        .then(json => { if (json.success) setStats(json.data); })
+        .catch(() => {}); // Non-blocking
 
+      apiGet('/api/v1/users/me')
+        .then(r => r.json())
+        .then(json => { if (json.success) setProfile(json.data); })
+        .catch(() => {});
+
+      reloadUser();
+    }, [])
+  );
+
+  const statusLabel =
+    user?.status === 'APPROVED' ? 'Verified' :
+    user?.status === 'REJECTED' ? 'Verification rejected' :
+    user?.has_kyc ? 'Verification under review' : 'Not verified yet';
 
   return (
     <Box className="flex-1 bg-surface">
@@ -50,7 +68,7 @@ export default function ProfileScreen() {
           <Box className="w-32 h-32 relative">
             <Box className="w-full h-full rounded-full border-4 border-primary/20 p-1">
               <Image 
-                source={{ uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuB6ob1vuMo2Svf3nB_QJk5v9ZIqTdgNOptvxowNDXMq24U_mnuaWaS9d_jthEAEWs63ZF3luDo94Dr4nBAUkfLQ0hi_49J73f5lYKSkaZhoL4wO5gkcRWNWmZXyshZKz4N5KF9gRILJxGVFABjJmQFVXKbwviYchT1f2D16hyhestdxA-vfCzsokNKLEuI_7X5_tkE5h6f7dooN2Y42Y2IhmSmuQ6exUwRYiS_LleXvm-ycPiOXVorPGzqQZuGA6tFPV-aegG3jdZo' }} 
+                source={{ uri: mediaUrl(profile?.photos?.[0]?.url) }} 
                 className="w-full h-full rounded-full" 
                 alt="Profile" 
               />
@@ -68,9 +86,21 @@ export default function ProfileScreen() {
                 <Text className="font-label text-[10px] uppercase tracking-widest" style={{ color: isElite ? '#FFD700' : '#414BEA' }}>{tier} Member</Text>
               </HStack>
             )}
-            <Text className="font-body text-xs text-on-surface-variant text-center px-8 mt-2 leading-relaxed">
-              Digital architect and kinetic art enthusiast. Always looking for the perfect blend of form and functionality.
-            </Text>
+            <TouchableOpacity
+              disabled={!!user?.has_kyc}
+              onPress={() => router.push('/kyc')}
+              className="flex-row items-center space-x-1 mt-1"
+            >
+              <ShieldCheck size={12} color={user?.status === 'APPROVED' ? '#22c55e' : '#afadac'} />
+              <Text className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant">
+                {statusLabel}{!user?.has_kyc ? ' — tap to verify' : ''}
+              </Text>
+            </TouchableOpacity>
+            {!!profile?.bio && (
+              <Text className="font-body text-xs text-on-surface-variant text-center px-8 mt-2 leading-relaxed">
+                {profile.bio}
+              </Text>
+            )}
           </VStack>
         </VStack>
 

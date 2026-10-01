@@ -21,13 +21,15 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/src/store/authStore';
 import { apiGet, apiPost } from '@/src/lib/api';
-import { useRouter, type Href } from 'expo-router';
+import { mediaUrl } from '@/src/lib/config';
+import { useRouter, useFocusEffect, type Href } from 'expo-router';
+import { Alert } from 'react-native';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface DiscoveredUser {
   id: string;
   name: string;
-  age: number;
+  age: number | null;
   city: string;
   distance_km: number;
   job: string;
@@ -45,7 +47,17 @@ interface Filters {
   recently_active: boolean;
 }
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL as string;
+const ageFromDob = (dob?: string | null): number | null => {
+  if (!dob) return null;
+  const birth = new Date(dob);
+  if (isNaN(birth.getTime())) return null;
+  const now = new Date();
+  let age = now.getFullYear() - birth.getFullYear();
+  const beforeBirthday =
+    now.getMonth() < birth.getMonth() ||
+    (now.getMonth() === birth.getMonth() && now.getDate() < birth.getDate());
+  return beforeBirthday ? age - 1 : age;
+};
 
 // ─── User Card ────────────────────────────────────────────────────────────────
 const UserCard = ({ user, isDesktop = false, onFavorite, isFavorited }: { user: DiscoveredUser; isDesktop?: boolean; onFavorite?: () => void; isFavorited?: boolean }) => (
@@ -78,7 +90,7 @@ const UserCard = ({ user, isDesktop = false, onFavorite, isFavorited }: { user: 
       <VStack space="xs">
         <HStack className="items-center space-x-2 flex-wrap">
           <Heading className={`font-headline ${isDesktop ? 'text-xl' : 'text-3xl'} font-bold text-white tracking-tight`}>
-            {user.name}, {user.age}
+            {user.name}{user.age != null ? `, ${user.age}` : ''}
           </Heading>
           <View className="bg-primary/40 px-2 py-0.5 rounded border border-white/20 mt-1">
             <Text className="font-label text-[10px] text-white uppercase tracking-tighter">KYC Verified</Text>
@@ -92,7 +104,7 @@ const UserCard = ({ user, isDesktop = false, onFavorite, isFavorited }: { user: 
         <HStack className="items-center space-x-3">
           <MapPin size={12} color="white" />
           <Text className="font-label text-[10px] text-white uppercase tracking-widest leading-none">
-            {user.city} • {user.distance_km < 99999 ? `${user.distance_km} km away` : 'Nearby'}
+            {[user.city, user.distance_km < 99999 ? `${user.distance_km} km away` : null].filter(Boolean).join(' • ') || 'Location hidden'}
           </Text>
         </HStack>
       </VStack>
@@ -264,6 +276,11 @@ export default function DiscoveryScreen() {
   const [loading, setLoading] = useState(false);
   const [filterVisible, setFilterVisible] = useState(false);
   const [favoritedIds, setFavoritedIds] = useState<Set<string>>(new Set());
+  // Why the feed is unavailable, when the server refuses it (profile / KYC not finished)
+  const [gate, setGate] = useState<null | 'profile' | 'kyc'>(null);
+  const [loadError, setLoadError] = useState('');
+  const [matchedUser, setMatchedUser] = useState<DiscoveredUser | null>(null);
+  const user = useAuthStore((state) => state.user);
 
   const [filters, setFilters] = useState<Filters>({
     min_age: 18,
@@ -289,33 +306,48 @@ export default function DiscoveryScreen() {
       const res = await apiGet(`/api/v1/discovery?${params.toString()}`);
       const json = await res.json();
       if (json.success && json.data.users) {
+        const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
         const mapped: DiscoveredUser[] = json.data.users.map((u: any) => ({
           id: u.id,
           name: u.first_name || 'User',
-          age: u.dob ? new Date().getFullYear() - new Date(u.dob).getFullYear() : 25,
-          city: u.living_in || 'Unknown',
+          age: ageFromDob(u.dob),
+          city: u.living_in || u.city || '',
           distance_km: u.distance_km ?? 99999,
           job: u.job_title || '',
           match_pct: u.match_pct ?? 50,
-          active: u.status === 'APPROVED',
-          image: u.photos?.length > 0
-            ? (u.photos[0].url.startsWith('http') ? u.photos[0].url : `${API_URL}/${u.photos[0].url}`)
-            : 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=400',
+          active: !!u.last_login_at && new Date(u.last_login_at).getTime() > dayAgo,
+          image: mediaUrl(u.photos?.[0]?.url),
           bio: u.bio || '',
         }));
         setUsers(mapped);
         setCurrentIndex(0);
+        setGate(null);
+        setLoadError('');
+      } else if (json.error?.code === 'DISCOVERY_GATED') {
+        // The server keeps discovery locked until the profile and KYC video are in
+        const me = useAuthStore.getState().user;
+        setGate(me && !me.is_profile_complete ? 'profile' : 'kyc');
+        setUsers([]);
+      } else {
+        setLoadError(json.error?.message || 'Could not load people right now.');
       }
     } catch (err) {
       console.error('Failed to fetch users', err);
+      setLoadError("Can't reach the server. Check your connection and try again.");
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => {
-    fetchUsers(filters);
-  }, []);
+  // Load on first visit, and again whenever the tab regains focus with nothing to show
+  // (e.g. coming back from the KYC screen, which is what unlocks the feed).
+  const stateRef = React.useRef({ filters, needsLoad: true });
+  stateRef.current = { filters, needsLoad: users.length === 0 };
+  useFocusEffect(
+    useCallback(() => {
+      if (stateRef.current.needsLoad) fetchUsers(stateRef.current.filters);
+    }, [fetchUsers])
+  );
 
   const handleApplyFilters = (newFilters: Filters) => {
     setFilterVisible(false);
@@ -323,9 +355,18 @@ export default function DiscoveryScreen() {
     fetchUsers(newFilters);
   };
 
-  const handleSwipe = async (userId: string, action: 'LIKE' | 'DISLIKE' | 'SUPER_LIKE') => {
+  const handleSwipe = async (target: DiscoveredUser, action: 'LIKE' | 'DISLIKE' | 'SUPER_LIKE') => {
+    // The card leaves the deck immediately; a swiped profile must never come back around.
+    setUsers(prev => prev.filter(u => u.id !== target.id));
+    setCurrentIndex(0);
     try {
-      await apiPost('/api/v1/swipe', { to_user_id: userId, action });
+      const res = await apiPost('/api/v1/swipe', { to_user_id: target.id, action });
+      const json = await res.json();
+      if (json.success && json.data?.match) {
+        setMatchedUser(target);
+      } else if (!json.success && json.error?.code === 'RATE_LIMIT_EXCEEDED') {
+        Alert.alert('Slow down', json.error.message || 'You are swiping too fast!');
+      }
     } catch (err) {
       console.error('Swipe failed:', err);
     }
@@ -346,14 +387,13 @@ export default function DiscoveryScreen() {
 
   const handleSwipeComplete = (direction: 'left' | 'right' | 'star') => {
     if (users.length === 0) return;
-    const userToSwipe = users[currentIndex];
+    const userToSwipe = users[currentIndex] ?? users[0];
 
-    setCurrentIndex(prev => (prev + 1) % users.length);
     translateX.value = 0;
     translateY.value = 0;
 
     const action = direction === 'right' ? 'LIKE' : direction === 'star' ? 'SUPER_LIKE' : 'DISLIKE';
-    handleSwipe(userToSwipe.id, action);
+    handleSwipe(userToSwipe, action);
   };
 
   const SWIPE_THRESHOLD = width * 0.25;
@@ -382,7 +422,7 @@ export default function DiscoveryScreen() {
     ],
   }));
 
-  const currentUser = users.length > 0 ? users[currentIndex] : null;
+  const currentUser = users.length > 0 ? (users[currentIndex] ?? users[0]) : null;
 
   const hasActiveFilters =
     filters.min_age !== 18 || filters.max_age !== 50 ||
@@ -397,6 +437,36 @@ export default function DiscoveryScreen() {
         onClose={() => setFilterVisible(false)}
         onApply={handleApplyFilters}
       />
+
+      {/* It's a match */}
+      <Modal visible={!!matchedUser} transparent animationType="fade" onRequestClose={() => setMatchedUser(null)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <View style={{ backgroundColor: '#f9f6f5', borderRadius: 28, padding: 28, width: '100%', maxWidth: 360, alignItems: 'center' }}>
+            {matchedUser && (
+              <Image source={{ uri: matchedUser.image }} style={{ width: 112, height: 112, borderRadius: 56, marginBottom: 16 }} alt="Match" />
+            )}
+            <Heading className="font-headline text-2xl font-bold text-primary text-center">It's a match!</Heading>
+            <Text className="font-body text-sm text-on-surface-variant text-center mt-2">
+              You and {matchedUser?.name} liked each other.
+            </Text>
+            <TouchableOpacity
+              onPress={() => {
+                const partner = matchedUser;
+                setMatchedUser(null);
+                if (partner) {
+                  router.push({ pathname: '/chat/[id]', params: { id: partner.id, name: partner.name, image: partner.image, isActive: 'false' } });
+                }
+              }}
+              className="mt-6 w-full h-12 signature-gradient rounded-2xl items-center justify-center"
+            >
+              <Text className="text-white font-bold">Send a message</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setMatchedUser(null)} className="mt-3 w-full h-12 rounded-2xl items-center justify-center bg-surface-container-low">
+              <Text className="text-on-surface-variant font-bold">Keep swiping</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       <Box className="w-full flex-1" style={{ maxWidth: isDesktop ? maxWidth : '100%' }}>
 
@@ -436,10 +506,39 @@ export default function DiscoveryScreen() {
 
         <ScrollView className="flex-1" contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 32, paddingBottom: 120 }}>
 
+          {!gate && user?.status === 'UNDER_REVIEW' && (
+            <Box className="w-full mb-6 p-4 bg-primary/5 rounded-xl border border-primary/10">
+              <Text className="font-body text-xs text-primary text-center">
+                Your profile is under review. You can browse now — others will see you once you are approved.
+              </Text>
+            </Box>
+          )}
+
           {loading ? (
-            <Box className="w-full aspect-[3/4] mb-8 items-center justify-center bg-surface-container-lowest rounded-xl border border-outline-variant/10">
+            <Box className="w-full aspect-[3/4] mb-8 items-center justify-center bg-surface-container-lowest rounded-xl border border-outline-variant/10" style={isDesktop ? { maxWidth: 420, alignSelf: 'center' } : undefined}>
               <ActivityIndicator size="large" color="#414BEA" />
               <Text className="font-body text-on-surface-variant mt-4">Finding people near you…</Text>
+            </Box>
+          ) : gate || loadError || (isDesktop && users.length === 0) ? (
+            <Box className="w-full aspect-[3/4] mb-8 items-center justify-center bg-surface-container-lowest rounded-xl border border-outline-variant/10 p-8" style={isDesktop ? { maxWidth: 420, alignSelf: 'center' } : undefined}>
+              <Heading className="font-headline text-xl font-bold text-on-surface text-center mb-2">
+                {gate === 'kyc' ? 'Verify to start discovering' : gate === 'profile' ? 'Finish your profile' : loadError ? 'Something went wrong' : 'No more people nearby'}
+              </Heading>
+              <Text className="text-on-surface-variant font-body text-center text-sm leading-relaxed">
+                {gate === 'kyc'
+                  ? 'Record a quick verification video to unlock discovery. It keeps Minglex free of fake profiles.'
+                  : gate === 'profile'
+                  ? 'Add your details, interests and a photo to unlock discovery.'
+                  : loadError || 'Check back soon, or widen your filters.'}
+              </Text>
+              <TouchableOpacity
+                onPress={() => gate === 'kyc' ? router.push('/kyc') : gate === 'profile' ? router.push('/onboarding') : fetchUsers(filters)}
+                className="mt-6 px-6 py-3 signature-gradient rounded-full"
+              >
+                <Text className="text-white font-bold">
+                  {gate === 'kyc' ? 'Verify now' : gate === 'profile' ? 'Complete profile' : loadError ? 'Try again' : 'Refresh'}
+                </Text>
+              </TouchableOpacity>
             </Box>
           ) : isDesktop ? (
             /* Desktop Grid View */
@@ -447,12 +546,12 @@ export default function DiscoveryScreen() {
               <HStack className="flex-wrap justify-center gap-6">
                 {users.map((user) => (
                   <VStack key={user.id} className="w-[30%] min-w-[300px]" space="md">
-                    <UserCard user={user} isDesktop />
+                    <UserCard user={user} isDesktop onFavorite={() => toggleFavorite(user.id)} isFavorited={favoritedIds.has(user.id)} />
                     <ActionButtons
                       isDesktop
-                      onLeft={() => handleSwipe(user.id, 'DISLIKE')}
-                      onRight={() => handleSwipe(user.id, 'LIKE')}
-                      onStar={() => handleSwipe(user.id, 'SUPER_LIKE')}
+                      onLeft={() => handleSwipe(user, 'DISLIKE')}
+                      onRight={() => handleSwipe(user, 'LIKE')}
+                      onStar={() => handleSwipe(user, 'SUPER_LIKE')}
                     />
                   </VStack>
                 ))}

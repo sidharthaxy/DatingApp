@@ -10,14 +10,16 @@ import { Input, InputField } from '@/components/ui/input';
 import { useAuthStore } from '@/src/store/authStore';
 import { ArrowLeft, SmartphoneIcon, KeyRound } from 'lucide-react-native';
 import { router } from 'expo-router';
-import auth, { FirebaseAuthTypes } from '@react-native-firebase/auth';
+import { getNativeAuth } from '@/src/lib/firebase';
+import { registerForPushNotifications } from '@/src/lib/notifications';
+import { API_URL } from '@/src/lib/config';
+import { homeRouteFor } from '@/src/lib/routing';
 
 export default function PhoneLoginScreen() {
-  const { setUser, setToken } = useAuthStore();
-  const apiUrl = process.env.EXPO_PUBLIC_API_URL as string;
+  const startSession = useAuthStore((state) => state.startSession);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [code, setCode] = useState('');
-  const [confirm, setConfirm] = useState<FirebaseAuthTypes.ConfirmationResult | null>(null);
+  const [confirm, setConfirm] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -30,8 +32,17 @@ export default function PhoneLoginScreen() {
     
     setLoading(true);
     try {
-      const formattedPhone = phoneNumber.startsWith('+') ? phoneNumber : `+${phoneNumber}`;
-      const confirmation = await auth().signInWithPhoneNumber(formattedPhone);
+      const nativeAuth = getNativeAuth();
+      if (!nativeAuth) {
+        setErrorMsg(
+          Platform.OS === 'web'
+            ? 'Phone sign-in is only available in the mobile app. Please use "Continue with Google" here.'
+            : 'Phone sign-in needs a development build of the app (it is not available in Expo Go). Please use "Continue with Google".'
+        );
+        return;
+      }
+      const formattedPhone = (phoneNumber.startsWith('+') ? phoneNumber : `+${phoneNumber}`).replace(/[\s()-]/g, '');
+      const confirmation = await nativeAuth().signInWithPhoneNumber(formattedPhone);
       setConfirm(confirmation);
     } catch (error: any) {
       console.error('Send OTP Error: ', error);
@@ -55,12 +66,8 @@ export default function PhoneLoginScreen() {
         if (userCredential?.user) {
           const idToken = await userCredential.user.getIdToken();
           
-          const apiUrl = process.env.EXPO_PUBLIC_API_URL as string;
-  // FCM util — lazy import to avoid crash if expo-notifications not installed
-  const { registerForPushNotifications } = require('@/src/lib/notifications'); 
-          
           try {
-             const res = await fetch(`${apiUrl}/api/v1/auth/verify`, {
+             const res = await fetch(`${API_URL}/api/v1/auth/verify`, {
                method: 'POST',
                headers: { 'Content-Type': 'application/json' },
                body: JSON.stringify({ idToken })
@@ -69,21 +76,11 @@ export default function PhoneLoginScreen() {
              const data = await res.json();
              
              if (data.success) {
-               setToken(data.data.accessToken);
-               setUser({
-                 id: data.data.user.id,
-                 status: data.data.user.status,
-                 is_profile_complete: data.data.user.is_profile_complete ?? false,
-                 first_name: data.data.user.first_name ?? null,
-                 subscription_tier: data.data.user.subscription_tier ?? 'FREE',
-               });
+               // startSession also persists the refresh token, so the session survives a restart
+               const user = await startSession(data.data);
                // Register FCM push token (non-blocking)
                registerForPushNotifications().catch(() => {});
-               if (data.data.user.is_profile_complete && data.data.user.status === 'APPROVED') {
-                 router.replace('/(tabs)/discovery');
-               } else {
-                 router.replace('/onboarding');
-               }
+               router.replace(homeRouteFor(user));
              } else {
                setErrorMsg(data.error?.message || 'Verification failed on server');
              }

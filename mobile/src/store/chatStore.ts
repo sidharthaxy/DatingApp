@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 import { io, Socket } from 'socket.io-client';
 import { useAuthStore } from './authStore';
-
-const BACKEND_URL = process.env.EXPO_PUBLIC_API_URL as string;
+import { API_URL as BACKEND_URL } from '../lib/config';
+import { apiGet } from '../lib/api';
 
 export interface Message {
   id: string;
@@ -36,8 +36,16 @@ export interface ChatState {
   activeUsers: string[];
   messages: Message[];
   conversations: Conversation[];
+  /** True once the conversation list has been fetched at least once */
+  conversationsLoaded: boolean;
   isConnected: boolean;
   typingUsers: Record<string, boolean>; // userId -> isTyping
+  /** A match is ringing us right now (userId of the caller) */
+  incomingCallFrom: string | null;
+  /** The call we are currently in / dialling (partner's userId) */
+  activeCallWith: string | null;
+  setActiveCall: (partnerId: string | null) => void;
+  dismissIncomingCall: (decline: boolean) => void;
 
   connectSocket: () => void;
   disconnectSocket: () => void;
@@ -52,8 +60,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
   activeUsers: [],
   messages: [],
   conversations: [],
+  conversationsLoaded: false,
   isConnected: false,
   typingUsers: {},
+  incomingCallFrom: null,
+  activeCallWith: null,
+
+  setActiveCall: (partnerId) => set({ activeCallWith: partnerId }),
+
+  dismissIncomingCall: (decline) => {
+    const { socket, incomingCallFrom } = get();
+    if (decline && socket && incomingCallFrom) {
+      socket.emit('call_declined', { partnerId: incomingCallFrom });
+    }
+    set({ incomingCallFrom: null });
+  },
 
   connectSocket: () => {
     const { user, token } = useAuthStore.getState();
@@ -62,12 +83,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
     // Only connect if user is logged in and no existing socket
     if (!user || !token || socket) return;
 
-    // Pass Bearer token in auth handshake so backend middleware can verify it
+    // Pass Bearer token in auth handshake so backend middleware can verify it.
+    // `auth` is a function so every (re)connection attempt presents the CURRENT access
+    // token — a socket created with a fixed token could never reconnect after it expired.
     const newSocket = io(BACKEND_URL, {
-      auth: { token },
+      auth: (cb) => cb({ token: useAuthStore.getState().token }),
       transports: ['websocket'],
       reconnection: true,
-      reconnectionAttempts: 5,
+      reconnectionAttempts: 10,
     });
 
     newSocket.on('connect', () => {
@@ -75,8 +98,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
       set({ isConnected: true, socket: newSocket });
     });
 
-    newSocket.on('connect_error', (err) => {
-      console.error('[Socket] Connection error:', err.message);
+    newSocket.on('connect_error', async (err) => {
+      console.warn('[Socket] Connection error:', err.message);
+      // Expired access token: get a new one, the next reconnection attempt will use it
+      if (/Invalid token/i.test(err.message)) {
+        await useAuthStore.getState().refreshAccessToken();
+      }
     });
 
     newSocket.on('disconnect', () => {
@@ -93,31 +120,64 @@ export const useChatStore = create<ChatState>((set, get) => ({
     });
 
     // Backend emits 'receiveMessage' (camelCase) — align with socket.ts
-    newSocket.on('receiveMessage', ({ message }: { message: any }) => {
-      const msg: Message = {
-        id: message.id,
-        fromUserId: message.from_user,
-        toUserId: message.to_user,
-        content: message.content,
-        mediaUrl: message.media_url,
-        createdAt: message.created_at,
-        is_read: message.is_read,
-        is_edited: message.is_edited,
-        is_deleted: message.is_deleted,
-      };
-      set((state) => ({ messages: [...state.messages, msg] }));
+    const toMessage = (message: any): Message => ({
+      id: message.id,
+      fromUserId: message.from_user,
+      toUserId: message.to_user,
+      content: message.content,
+      mediaUrl: message.media_url,
+      createdAt: message.created_at,
+      is_read: message.is_read,
+      is_edited: message.is_edited,
+      is_deleted: message.is_deleted,
     });
 
-    // Also listen for confirmation of our own sent message
+    // Backend emits 'receiveMessage' (camelCase) — align with socket.ts
+    newSocket.on('receiveMessage', ({ message }: { message: any }) => {
+      const msg = toMessage(message);
+      set((state) => (state.messages.some((m) => m.id === msg.id) ? {} : { messages: [...state.messages, msg] }));
+      get().fetchConversations();
+    });
+
+    // Confirmation of our own sent message: swap the oldest matching optimistic entry
+    // (and only that one) for the real record from the database.
     newSocket.on('messageSent', ({ message }: { message: any }) => {
-      // Update the optimistic message id to the real DB id
-      set((state) => ({
-        messages: state.messages.map((m) =>
-          m.content === message.content && m.fromUserId === message.from_user
-            ? { ...m, id: message.id }
-            : m
-        ),
-      }));
+      const confirmed = toMessage(message);
+      set((state) => {
+        const index = state.messages.findIndex(
+          (m) =>
+            m.id.startsWith('temp_') &&
+            m.toUserId === confirmed.toUserId &&
+            (m.content || '') === (confirmed.content || '') &&
+            (m.mediaUrl || '') === (confirmed.mediaUrl || '')
+        );
+        if (index === -1) return { messages: [...state.messages, confirmed] };
+        const next = [...state.messages];
+        next[index] = confirmed;
+        return { messages: next };
+      });
+      get().fetchConversations();
+    });
+
+    newSocket.on('error', (payload: { message?: string }) => {
+      console.warn('[Socket] Server error:', payload?.message);
+    });
+
+    // ─── Calls ───────────────────────────────────────────────────────────────
+    newSocket.on('call_incoming', ({ from }: { from: string }) => {
+      const { activeCallWith } = get();
+      if (activeCallWith && activeCallWith !== from) {
+        // Already on another call
+        newSocket.emit('call_declined', { partnerId: from, reason: 'busy' });
+        return;
+      }
+      if (activeCallWith === from) return; // both rang each other; the call screen handles it
+      set({ incomingCallFrom: from });
+      if (!get().conversations.some((c) => c.partner.id === from)) get().fetchConversations();
+    });
+
+    newSocket.on('call_ended', ({ from }: { from: string }) => {
+      if (get().incomingCallFrom === from) set({ incomingCallFrom: null });
     });
 
     newSocket.on('typingStatus', ({ userId, isTyping }: { userId: string; isTyping: boolean }) => {
@@ -148,8 +208,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
   disconnectSocket: () => {
     const { socket } = get();
     if (socket) {
+      socket.removeAllListeners();
       socket.disconnect();
-      set({ socket: null, isConnected: false, activeUsers: [], typingUsers: {} });
+    }
+    // A new sign-in must never see the previous member's conversations
+    if (socket || get().conversations.length > 0 || get().messages.length > 0) {
+      set({ socket: null, isConnected: false, activeUsers: [], typingUsers: {}, messages: [], conversations: [], conversationsLoaded: false, incomingCallFrom: null, activeCallWith: null });
     }
   },
 
@@ -190,18 +254,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   fetchConversations: async () => {
-    const { token } = useAuthStore.getState();
-    if (!token) return;
+    if (!useAuthStore.getState().token) return;
     try {
-      const res = await fetch(`${BACKEND_URL}/api/v1/chat/conversations`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      // apiGet refreshes an expired access token and retries, unlike a bare fetch
+      const res = await apiGet('/api/v1/chat/conversations');
       const json = await res.json();
       if (json.success) {
         set({ conversations: json.data.conversations });
       }
     } catch (err) {
       console.error('[Chat] Failed to fetch conversations:', err);
+    } finally {
+      set({ conversationsLoaded: true });
     }
   },
 }));

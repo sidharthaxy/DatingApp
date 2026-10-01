@@ -1,64 +1,171 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from 'react-native';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { View, TouchableOpacity, StyleSheet } from 'react-native';
 import { Text } from '@/components/ui/text';
 import { Heading } from '@/components/ui/heading';
 import { HStack } from '@/components/ui/hstack';
-import { VStack } from '@/components/ui/vstack';
 import { Image } from '@/components/ui/image';
 import { Mic, MicOff, Video as VideoIcon, VideoOff, PhoneOff } from 'lucide-react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/src/store/authStore';
 import { useChatStore } from '@/src/store/chatStore';
+import { mediaUrl } from '@/src/lib/config';
+import { rtc, rtcUnavailableReason, StreamView } from '@/src/lib/webrtc';
 
-// Note: react-native-webrtc requires a custom dev client. 
-// This acts as a mock/placeholder if it fails to import in Expo Go.
-let RTCView: any = View;
-let mediaDevices: any = null;
-let RTCPeerConnection: any = null;
-let RTCSessionDescription: any = null;
-let RTCIceCandidate: any = null;
+const RING_TIMEOUT_MS = 35000;
 
-try {
-  const webrtc = require('react-native-webrtc');
-  RTCView = webrtc.RTCView;
-  mediaDevices = webrtc.mediaDevices;
-  RTCPeerConnection = webrtc.RTCPeerConnection;
-  RTCSessionDescription = webrtc.RTCSessionDescription;
-  RTCIceCandidate = webrtc.RTCIceCandidate;
-} catch (e) {
-  console.warn('react-native-webrtc not available (expected in Expo Go)');
-}
-
+/**
+ * 1-on-1 video call.
+ *
+ * Signalling (relayed by the backend socket):
+ *   caller:  call_initiated ───────────────▶ callee sees the incoming-call prompt
+ *   callee:  call_accepted  ◀─ (camera on) ─ opens this screen with ?incoming=1
+ *   caller:  webrtc_offer   ───────────────▶ callee
+ *   callee:  webrtc_answer  ───────────────▶ caller
+ *   both:    webrtc_ice_candidate ⇄ … connected. Either side: call_ended.
+ *
+ * The offer is only created once the callee has accepted, so it can never arrive before
+ * the callee's screen is listening for it.
+ */
 export default function CallScreen() {
   const router = useRouter();
-  const { id, name, image } = useLocalSearchParams<{ id: string; name: string; image: string }>();
+  const { id, name, image, incoming } = useLocalSearchParams<{ id: string; name: string; image: string; incoming?: string }>();
+  const isCallee = incoming === '1';
   const user = useAuthStore(s => s.user);
   const socket = useChatStore(s => s.socket);
+  const isConnected = useChatStore(s => s.isConnected);
+  const connectSocket = useChatStore(s => s.connectSocket);
+  const setActiveCall = useChatStore(s => s.setActiveCall);
 
   const [localStream, setLocalStream] = useState<any>(null);
   const [remoteStream, setRemoteStream] = useState<any>(null);
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
-  const [status, setStatus] = useState('Calling...');
-  
+  const [status, setStatus] = useState(isCallee ? 'Connecting…' : 'Calling…');
+
+  // Refs, because the cleanup below must see the CURRENT stream / connection — reading
+  // state from a mount-time closure left the camera running after hanging up.
   const peerConnection = useRef<any>(null);
+  const localStreamRef = useRef<any>(null);
+  const pendingCandidates = useRef<any[]>([]);
+  const finished = useRef(false);
+
+  // Make sure the realtime connection exists (e.g. when opened from a deep link)
+  useEffect(() => {
+    connectSocket();
+  }, []);
+
+  const leave = useCallback((notifyPartner: boolean) => {
+    if (finished.current) return;
+    finished.current = true;
+    if (notifyPartner) useChatStore.getState().socket?.emit('call_ended', { partnerId: id });
+    if (router.canGoBack()) router.back();
+    else router.replace('/(tabs)/chat');
+  }, [id]);
 
   useEffect(() => {
-    if (!socket || !user || !RTCPeerConnection) {
-      setStatus('WebRTC not supported in this environment');
+    const unavailable = rtcUnavailableReason();
+    if (unavailable) {
+      setStatus(unavailable);
       return;
     }
+    if (!socket || !isConnected || !user || !id) return;
 
-    const startCall = async () => {
+    let cancelled = false;
+    let ringTimer: ReturnType<typeof setTimeout> | undefined;
+    setActiveCall(id);
+
+    const flushCandidates = async () => {
+      const pc = peerConnection.current;
+      if (!pc) return;
+      for (const candidate of pendingCandidates.current.splice(0)) {
+        try {
+          await pc.addIceCandidate(new rtc.RTCIceCandidate(candidate));
+        } catch (err) {
+          console.warn('[Call] Dropped ICE candidate', err);
+        }
+      }
+    };
+
+    const handleAccepted = async (data: any) => {
+      if (data.from !== id || !peerConnection.current) return;
+      if (ringTimer) clearTimeout(ringTimer);
+      setStatus('Connecting…');
+      const offer = await peerConnection.current.createOffer();
+      await peerConnection.current.setLocalDescription(offer);
+      socket.emit('webrtc_offer', { partnerId: id, offer });
+    };
+
+    const handleOffer = async (data: any) => {
+      const pc = peerConnection.current;
+      if (data.from !== id || !pc) return;
+      await pc.setRemoteDescription(new rtc.RTCSessionDescription(data.offer));
+      await flushCandidates();
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      socket.emit('webrtc_answer', { partnerId: id, answer });
+    };
+
+    const handleAnswer = async (data: any) => {
+      if (data.from !== id || !peerConnection.current) return;
+      await peerConnection.current.setRemoteDescription(new rtc.RTCSessionDescription(data.answer));
+      await flushCandidates();
+    };
+
+    const handleIceCandidate = async (data: any) => {
+      const pc = peerConnection.current;
+      if (data.from !== id || !pc || !data.candidate) return;
+      // Candidates can arrive before the remote description; hold them until it is set
+      if (!pc.remoteDescription) {
+        pendingCandidates.current.push(data.candidate);
+        return;
+      }
       try {
-        const stream = await mediaDevices.getUserMedia({
-          audio: true,
-          video: { facingMode: 'user' }
-        });
+        await pc.addIceCandidate(new rtc.RTCIceCandidate(data.candidate));
+      } catch (err) {
+        console.warn('[Call] Dropped ICE candidate', err);
+      }
+    };
+
+    const endWith = (message: string) => {
+      setStatus(message);
+      setRemoteStream(null);
+      setTimeout(() => leave(false), 1500);
+    };
+
+    const handleCallEnded = (data: any) => {
+      if (data.from === id) endWith(`${name || 'Your match'} ended the call`);
+    };
+
+    const handleDeclined = (data: any) => {
+      if (data.from === id) endWith(data.reason === 'busy' ? `${name || 'Your match'} is on another call` : 'Call declined');
+    };
+
+    socket.on('call_accepted', handleAccepted);
+    socket.on('call_declined', handleDeclined);
+    socket.on('webrtc_offer', handleOffer);
+    socket.on('webrtc_answer', handleAnswer);
+    socket.on('webrtc_ice_candidate', handleIceCandidate);
+    socket.on('call_ended', handleCallEnded);
+
+    const start = async () => {
+      try {
+        let stream: any;
+        try {
+          stream = await rtc.mediaDevices.getUserMedia({ audio: true, video: { facingMode: 'user' } });
+        } catch {
+          // No camera (or it is blocked): fall back to an audio-only call
+          stream = await rtc.mediaDevices.getUserMedia({ audio: true, video: false });
+          setIsVideoOff(true);
+        }
+        if (cancelled) {
+          stream.getTracks().forEach((track: any) => track.stop());
+          return;
+        }
+        localStreamRef.current = stream;
         setLocalStream(stream);
 
-        const pc = new RTCPeerConnection({
+        const pc = new rtc.RTCPeerConnection({
           iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
         });
         peerConnection.current = pc;
@@ -66,127 +173,102 @@ export default function CallScreen() {
         stream.getTracks().forEach((track: any) => pc.addTrack(track, stream));
 
         pc.ontrack = (event: any) => {
-          setRemoteStream(event.streams[0]);
+          if (event.streams?.[0]) setRemoteStream(event.streams[0]);
           setStatus('Connected');
         };
 
         pc.onicecandidate = (event: any) => {
           if (event.candidate) {
-            socket.emit('webrtc_ice_candidate', {
-              partnerId: id,
-              candidate: event.candidate
-            });
+            socket.emit('webrtc_ice_candidate', { partnerId: id, candidate: event.candidate });
           }
         };
 
-        // Notify partner
-        socket.emit('call_initiated', { partnerId: id });
+        pc.onconnectionstatechange = () => {
+          if (pc.connectionState === 'connected') setStatus('Connected');
+          if (pc.connectionState === 'failed') endWith('Connection lost');
+        };
 
-        // Create offer
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        socket.emit('webrtc_offer', { partnerId: id, offer });
-
+        if (isCallee) {
+          // Tell the caller we are ready; their offer follows
+          socket.emit('call_accepted', { partnerId: id });
+        } else {
+          socket.emit('call_initiated', { partnerId: id });
+          ringTimer = setTimeout(() => {
+            if (!peerConnection.current?.remoteDescription) endWith('No answer');
+          }, RING_TIMEOUT_MS);
+        }
       } catch (err) {
         console.error('Failed to start call', err);
-        setStatus('Failed to access camera/mic');
+        setStatus('Could not access your camera or microphone');
       }
     };
 
-    startCall();
-
-    // Socket listeners for WebRTC
-    const handleAnswer = async (data: any) => {
-      if (data.from === id && peerConnection.current) {
-        await peerConnection.current.setRemoteDescription(new RTCSessionDescription(data.answer));
-        setStatus('Connected');
-      }
-    };
-
-    const handleIceCandidate = async (data: any) => {
-      if (data.from === id && peerConnection.current) {
-        await peerConnection.current.addIceCandidate(new RTCIceCandidate(data.candidate));
-      }
-    };
-
-    const handleCallEnded = (data: any) => {
-      if (data.from === id) {
-        Alert.alert('Call Ended', `${name} ended the call.`, [{ text: 'OK', onPress: handleHangup }]);
-      }
-    };
-
-    socket.on('webrtc_answer', handleAnswer);
-    socket.on('webrtc_ice_candidate', handleIceCandidate);
-    socket.on('call_ended', handleCallEnded);
+    start();
 
     return () => {
+      cancelled = true;
+      if (ringTimer) clearTimeout(ringTimer);
+      socket.off('call_accepted', handleAccepted);
+      socket.off('call_declined', handleDeclined);
+      socket.off('webrtc_offer', handleOffer);
       socket.off('webrtc_answer', handleAnswer);
       socket.off('webrtc_ice_candidate', handleIceCandidate);
       socket.off('call_ended', handleCallEnded);
-      if (localStream) {
-        localStream.getTracks().forEach((track: any) => track.stop());
-      }
-      if (peerConnection.current) {
-        peerConnection.current.close();
-      }
-      socket.emit('call_ended', { partnerId: id });
+      localStreamRef.current?.getTracks().forEach((track: any) => track.stop());
+      localStreamRef.current = null;
+      peerConnection.current?.close();
+      peerConnection.current = null;
+      pendingCandidates.current = [];
+      setActiveCall(null);
+      // Leaving the screen any other way (back gesture, browser back) also ends the call
+      if (!finished.current) socket.emit('call_ended', { partnerId: id });
     };
-  }, []);
+  }, [socket, isConnected, user?.id, id]);
 
   const toggleMute = () => {
-    if (localStream) {
-      localStream.getAudioTracks().forEach((track: any) => {
-        track.enabled = !track.enabled;
-      });
-      setIsMuted(!isMuted);
-    }
+    const stream = localStreamRef.current;
+    if (!stream) return;
+    stream.getAudioTracks().forEach((track: any) => {
+      track.enabled = !track.enabled;
+    });
+    setIsMuted(!isMuted);
   };
 
   const toggleVideo = () => {
-    if (localStream) {
-      localStream.getVideoTracks().forEach((track: any) => {
-        track.enabled = !track.enabled;
-      });
-      setIsVideoOff(!isVideoOff);
-    }
+    const stream = localStreamRef.current;
+    if (!stream || stream.getVideoTracks().length === 0) return;
+    stream.getVideoTracks().forEach((track: any) => {
+      track.enabled = !track.enabled;
+    });
+    setIsVideoOff(!isVideoOff);
   };
 
-  const handleHangup = () => {
-    if (socket) socket.emit('call_ended', { partnerId: id });
-    router.back();
-  };
+  const handleHangup = () => leave(true);
 
   return (
     <SafeAreaView style={styles.container}>
       {/* Remote Video Background */}
-      {remoteStream && !isVideoOff ? (
-        <RTCView
-          streamURL={remoteStream.toURL()}
-          style={styles.remoteVideo}
-          objectFit="cover"
-        />
+      {remoteStream ? (
+        <StreamView stream={remoteStream} style={styles.remoteVideo} />
       ) : (
         <View style={styles.placeholderBackground}>
-          <Image source={{ uri: image }} style={styles.avatarLarge} />
+          <Image source={{ uri: mediaUrl(image) }} style={styles.avatarLarge} alt={name || 'Profile'} />
           <Heading style={styles.name}>{name}</Heading>
           <Text style={styles.status}>{status}</Text>
         </View>
       )}
 
       {/* Header Overlay */}
-      <View style={styles.header}>
-        <Heading style={{ color: 'white', fontSize: 18 }}>{name}</Heading>
-        <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 12 }}>{status}</Text>
-      </View>
+      {remoteStream && (
+        <View style={styles.header}>
+          <Heading style={{ color: 'white', fontSize: 18 }}>{name}</Heading>
+          <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 12 }}>{status}</Text>
+        </View>
+      )}
 
-      {/* Local Video PIP */}
+      {/* Local Video PIP — muted so you never hear yourself */}
       {localStream && !isVideoOff && (
-        <RTCView
-          streamURL={localStream.toURL()}
-          style={styles.localVideo}
-          objectFit="cover"
-          zOrder={1}
-        />
+        <StreamView stream={localStream} mirror muted style={styles.localVideo} />
       )}
 
       {/* Controls */}

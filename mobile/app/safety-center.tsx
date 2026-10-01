@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ScrollView, TouchableOpacity, View, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { ScrollView, TouchableOpacity, View, StyleSheet, Alert, ActivityIndicator, TextInput } from 'react-native';
 import { Text } from '@/components/ui/text';
 import { Heading } from '@/components/ui/heading';
 import { HStack } from '@/components/ui/hstack';
@@ -13,6 +13,11 @@ export default function SafetyCenterScreen() {
   const [contacts, setContacts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [panicLoading, setPanicLoading] = useState(false);
+  // Inline form: Alert.prompt only exists on iOS and crashed on Android and in the browser
+  const [addingContact, setAddingContact] = useState(false);
+  const [contactName, setContactName] = useState('');
+  const [contactPhone, setContactPhone] = useState('');
+  const [savingContact, setSavingContact] = useState(false);
 
   useEffect(() => {
     fetchContacts();
@@ -32,29 +37,30 @@ export default function SafetyCenterScreen() {
     }
   };
 
-  const handleAddContact = () => {
-    Alert.prompt('Add Contact', 'Enter Name and Phone Number (comma separated)', async (input) => {
-      if (!input) return;
-      const parts = input.split(',');
-      if (parts.length < 2) {
-        return Alert.alert('Invalid Format', 'Please use: Name, Phone');
+  const handleAddContact = async () => {
+    const name = contactName.trim();
+    const phone = contactPhone.trim();
+    if (!name || phone.replace(/\D/g, '').length < 6) {
+      return Alert.alert('Missing details', 'Enter a name and a valid phone number.');
+    }
+    setSavingContact(true);
+    try {
+      const res = await apiPost('/api/v1/safety/emergency-contacts', { name, phone, relation: 'Friend' });
+      const json = await res.json();
+      if (json.success) {
+        setContactName('');
+        setContactPhone('');
+        setAddingContact(false);
+        fetchContacts();
+      } else {
+        Alert.alert('Error', json.error?.message || 'Failed to add');
       }
-      try {
-        const res = await apiPost('/api/v1/safety/emergency-contacts', {
-          name: parts[0].trim(),
-          phone: parts[1].trim(),
-          relation: 'Friend'
-        });
-        const json = await res.json();
-        if (json.success) {
-          fetchContacts();
-        } else {
-          Alert.alert('Error', json.error?.message || 'Failed to add');
-        }
-      } catch (e) {
-        console.error(e);
-      }
-    });
+    } catch (e) {
+      console.error(e);
+      Alert.alert('Error', 'Network error. Please try again.');
+    } finally {
+      setSavingContact(false);
+    }
   };
 
   const handleDeleteContact = (id: string) => {
@@ -81,6 +87,11 @@ export default function SafetyCenterScreen() {
           onPress: async () => {
             setPanicLoading(true);
             try {
+              const permission = await Location.requestForegroundPermissionsAsync();
+              if (permission.status !== 'granted') {
+                Alert.alert('Location needed', 'Allow location access so your emergency contacts know where you are.');
+                return;
+              }
               let location = await Location.getCurrentPositionAsync({});
               const res = await apiPost('/api/v1/safety/panic', {
                 latitude: location.coords.latitude,
@@ -162,11 +173,38 @@ export default function SafetyCenterScreen() {
         <VStack style={styles.section}>
           <HStack style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <Heading style={styles.sectionTitle}>Emergency Contacts</Heading>
-            <TouchableOpacity onPress={handleAddContact} style={styles.addBtn}>
+            <TouchableOpacity onPress={() => setAddingContact((open) => !open)} style={styles.addBtn}>
               <Plus size={16} color="#414BEA" />
-              <Text style={styles.addBtnText}>Add</Text>
+              <Text style={styles.addBtnText}>{addingContact ? 'Cancel' : 'Add'}</Text>
             </TouchableOpacity>
           </HStack>
+
+          {addingContact && (
+            <VStack style={{ gap: 10, marginBottom: 16 }}>
+              <TextInput
+                style={styles.contactInput}
+                placeholder="Name"
+                placeholderTextColor="#afadac"
+                value={contactName}
+                onChangeText={setContactName}
+              />
+              <TextInput
+                style={styles.contactInput}
+                placeholder="Phone number"
+                placeholderTextColor="#afadac"
+                keyboardType="phone-pad"
+                value={contactPhone}
+                onChangeText={setContactPhone}
+              />
+              <TouchableOpacity
+                onPress={handleAddContact}
+                disabled={savingContact}
+                style={[styles.saveContactBtn, savingContact && { opacity: 0.7 }]}
+              >
+                {savingContact ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveContactText}>Save contact</Text>}
+              </TouchableOpacity>
+            </VStack>
+          )}
 
           {loading ? (
             <ActivityIndicator color="#414BEA" />
@@ -314,6 +352,26 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontFamily: 'Manrope_400Regular',
     paddingVertical: 12,
+  },
+  contactInput: {
+    borderWidth: 1,
+    borderColor: '#eae7e7',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: '#2f2f2e',
+    backgroundColor: '#fff',
+  },
+  saveContactBtn: {
+    backgroundColor: '#414BEA',
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  saveContactText: {
+    color: '#fff',
+    fontWeight: '700',
   },
   contactCard: {
     alignItems: 'center',

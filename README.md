@@ -44,10 +44,10 @@ graph TD
 ### 🔍 Discovery & Matchmaking
 - **Algorithm-Driven Feed:** Proximity and preference-based profile discovery.
 - **Smart Prioritization:** Profiles are ranked based on activity, completeness, and "Boost" status.
-- **Mutual Match Logic:** Instant match creation upon mutual "Like" swipes.
+- **Mutual Match Logic:** Instant match creation upon mutual "Like" / "Super Like" swipes.
 
 ### 🛡️ Trust & Safety (KYC)
-- **Video-Based Verification:** Users upload short KYC videos for manual admin approval.
+- **Video-Based Verification:** Users record a short KYC video (phone camera or laptop webcam) for manual admin approval. Videos are stored privately and only viewable by admins through signed links.
 - **Moderation Queue:** High-risk profiles and reports are prioritized in the Admin dashboard.
 - **Reporting & Appeals:** Comprehensive safety framework with automated shadow-banning.
 
@@ -102,11 +102,11 @@ The API is versioned (`/api/v1`) and follows RESTful principles.
 
 | Module | Endpoints | Description |
 | :--- | :--- | :--- |
-| **Auth** | `POST /auth/google`, `POST /auth/refresh` | Firebase-integrated OAuth & Token rotation. |
-| **User** | `GET /users/me`, `PUT /users/profile`, `POST /users/location` | Profile management and geolocation updates. |
+| **Auth** | `POST /auth/google`, `POST /auth/verify`, `POST /auth/refresh` | Firebase-integrated OAuth, phone OTP & token rotation. |
+| **User** | `GET /users/me`, `PUT /users/me`, `POST /users/location`, `POST /users/preferences`, `POST /users/interests` | Profile management and geolocation updates. |
 | **Discovery** | `GET /discovery`, `POST /swipe` | Core swiping logic and feed generation. |
-| **Chat** | `GET /chat/conversations`, `GET /chat/messages/:id` | Messaging history and participant metadata. |
-| **Media** | `POST /media/upload`, `GET /media/presigned` | Secure AWS S3 uploads for photos and KYC. |
+| **Chat** | `GET /chat/conversations`, `GET /chat/messages/:partnerId` | Messaging history and participant metadata. |
+| **Media** | `POST /media/upload` (photo), `POST /media/kyc` (video), `POST /media/chat-upload`, `POST /media/upload-url` | Photo, KYC video and voice-note uploads to S3-compatible storage. |
 | **Admin** | `GET /admin/stats`, `POST /admin/users/:id/approve` | Moderation and system analytics. |
 
 ---
@@ -134,24 +134,58 @@ erDiagram
 
 ---
 
-## ⚙️ Installation
+## ⚙️ Running Locally
 
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/your-username/minglex.git
-   cd minglex
-   ```
+### Prerequisites
+Node.js 20+, PostgreSQL, Redis, [MinIO](https://min.io/docs/minio/macos/index.html) and the [Firebase CLI](https://firebase.google.com/docs/cli) (`brew install postgresql redis minio firebase-cli`).
 
-2. **Install Dependencies:**
-   ```bash
-   npm run install-all
-   ```
+### 1. Install & configure (once)
+```bash
+git clone https://github.com/sidharthaxy/DatingApp.git
+cd DatingApp
+npm run install-all
 
-3. **Configure Environment:**
-   Fill in `.env` files in `backend/` and `mobile/` using the provided `.env.example` templates.
+cp backend/.env.example backend/.env    # then fill in the values
+cp mobile/.env.example  mobile/.env     # then fill in the Firebase web config
+# admin/.env needs: VITE_API_URL="http://localhost:8000/api/v1"
 
-4. **Launch Services:**
-   - **Backend:** `cd backend && npm run dev`
-   - **Mobile:** `cd mobile && npx expo start`
-   - **Admin:** `cd admin && npm run dev`
+cd backend
+npm run db:push        # create / update the database tables
+npm run db:seed        # seed the interests shown during onboarding
+```
 
+### 2. Start everything
+The app needs **five** things running. Postgres and Redis usually run as services (`brew services start postgresql redis`); the rest each take a terminal:
+
+| # | What | Command | Port |
+| :-- | :--- | :--- | :--- |
+| 1 | Object storage (photos, KYC videos, voice notes) | `npm run services:storage` | 9000 |
+| 2 | Firebase Auth emulator (local sign-in) | `npm run services:emulators` | 9099 |
+| 3 | API + WebSocket server | `npm run backend:dev` | 8000 |
+| 4 | The app | `npm run mobile:web` | 8081 |
+| 5 | Admin dashboard (optional) | `npm run admin:dev` | 5173 |
+
+The first time storage is started, run `npm --prefix backend run storage:init` to create the bucket and its access policy.
+
+> If photo or KYC upload fails with *"Media storage is unreachable"*, MinIO (#1) is not running. If sign-in fails with *"Can't reach the Firebase Auth emulator"*, #2 is not running.
+
+### 3. Use it
+**In the laptop browser** — open **http://localhost:8081**. Use `localhost`, not your IP address: browsers only allow camera/microphone access on `localhost` or `https`. Sign in with *Continue with Google* (the emulator lets you invent an account), complete onboarding, and record the 5-second KYC video with your webcam.
+
+**On a phone** — run `npm run mobile:start` and scan the QR code with Expo Go (same Wi-Fi, Expo Go for SDK 55). The app rewrites `localhost` to your computer's address automatically. For profile photos to load on the phone, also set `STORAGE_PUBLIC_URL="http://<your-LAN-IP>:9000"` in `backend/.env`. Features that rely on native modules — phone-number login, push notifications, video calls and Razorpay checkout — need a development build (`npx expo run:ios` / `npx expo run:android`) with your `google-services.json` / `GoogleService-Info.plist` added; in Expo Go they show a message instead of crashing.
+
+> **Verification status:** the browser build is exercised end to end (sign-in, onboarding, KYC video, discovery, matching, chat, voice notes, video calls, admin review). The native camera/recording path has been reworked but has not yet been run on a physical device.
+
+**Approving members** — new profiles are `UNDER_REVIEW`: they can browse, but are only shown to others once approved. Open the admin dashboard (http://localhost:5173, first login `admin@minglex.com` / `admin123`, which you are then asked to change), watch the KYC video and approve.
+
+### Tests
+```bash
+npm run backend:test     # API test-suite (uses the separate database in backend/.env.test)
+```
+
+### Member flow
+```
+Sign in → Terms → Onboarding (profile, preferences, location, interests, photo)
+        → KYC video → Discovery ⇄ Messages ⇄ Profile
+```
+Discovery stays locked until the profile is complete **and** a KYC video has been submitted. KYC can be skipped and done later from the Profile tab.
